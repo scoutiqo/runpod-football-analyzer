@@ -15,12 +15,37 @@ def get_model():
     return _MODEL
 
 def dl_tmp(url: str) -> str:
-    r = requests.get(url, stream=True, timeout=60); r.raise_for_status()
+    """Download to a local temp .mp4. Supports YouTube and direct .mp4 URLs."""
+    # If it's YouTube, use yt-dlp to download and merge to mp4
+    if "youtube.com" in url or "youtu.be" in url:
+        tmpdir = tempfile.mkdtemp()
+        outtmpl = os.path.join(tmpdir, "video.%(ext)s")  # yt-dlp will set the right extension
+        ydl_opts = {
+            "format": "mp4/bestvideo+bestaudio/best",
+            "merge_output_format": "mp4",
+            "outtmpl": outtmpl,
+            "quiet": True,
+            "noprogress": True,
+        }
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        # find the produced mp4
+        for fname in os.listdir(tmpdir):
+            if fname.lower().endswith(".mp4"):
+                return os.path.join(tmpdir, fname)
+        raise RuntimeError("yt-dlp did not produce an mp4 file.")
+
+    # Otherwise: direct file download
+    r = requests.get(url, stream=True, timeout=60)
+    r.raise_for_status()
     fd, p = tempfile.mkstemp(suffix=".mp4"); os.close(fd)
-    with open(p,"wb") as f:
-        for c in r.iter_content(1<<20):
-            if c: f.write(c)
+    with open(p, "wb") as f:
+        for chunk in r.iter_content(1 << 20):
+            if chunk:
+                f.write(chunk)
     return p
+
 
 def upload_bytes(bucket, path, data, content_type):
     url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
