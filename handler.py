@@ -55,17 +55,37 @@ def upload_bytes(bucket, path, data, content_type):
 
 def post_rest(table, row):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
-    h = {"Authorization": f"Bearer {SERVICE_ROLE}", "apikey": SERVICE_ROLE, "Content-Type":"application/json"}
-    r = requests.post(url, headers=h, data=json.dumps(row), timeout=30)
-    if not r.ok: raise RuntimeError(f"post {table} failed {r.status_code}: {r.text}")
-    return r.json()
+    headers = {
+        "Authorization": f"Bearer {SERVICE_ROLE}",
+        "apikey": SERVICE_ROLE,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"  # <— ask PostgREST to return JSON
+    }
+    r = requests.post(url, headers=headers, data=json.dumps(row), timeout=30)
+    if not r.ok:
+        raise RuntimeError(f"post {table} failed {r.status_code}: {r.text}")
+    # If server still returns no body, avoid JSONDecodeError
+    try:
+        return r.json()
+    except ValueError:
+        return {"status_code": r.status_code}
 
 def patch_rest(table, where, row):
     url = f"{SUPABASE_URL}/rest/v1/{table}?{where}"
-    h = {"Authorization": f"Bearer {SERVICE_ROLE}", "apikey": SERVICE_ROLE, "Content-Type":"application/json"}
-    r = requests.patch(url, headers=h, data=json.dumps(row), timeout=30)
-    if not r.ok: raise RuntimeError(f"patch {table} failed {r.status_code}: {r.text}")
-    return r.json()
+    headers = {
+        "Authorization": f"Bearer {SERVICE_ROLE}",
+        "apikey": SERVICE_ROLE,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"  # <— ask for JSON back
+    }
+    r = requests.patch(url, headers=headers, data=json.dumps(row), timeout=30)
+    if not r.ok:
+        raise RuntimeError(f"patch {table} failed {r.status_code}: {r.text}")
+    try:
+        return r.json()
+    except ValueError:
+        return {"status_code": r.status_code}
+
 
 def analyze(video_url, max_frames=150, frame_skip=5):
     p = dl_tmp(video_url)
