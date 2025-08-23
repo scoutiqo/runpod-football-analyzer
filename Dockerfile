@@ -1,29 +1,33 @@
-# Minimal image that runs our serverless handler
-FROM python:3.10-slim
+# GPU-enabled base image for RunPod serverless
+FROM runpod/serverless:gpu
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# basic libs for opencv
+# System libs for OpenCV / ffmpeg and some deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg libglib2.0-0 libgl1 && \
+    git ffmpeg libgl1 libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# install Python deps
+# ---- Install CUDA 12.1 PyTorch wheels FIRST ----
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 \
+    torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1
+
+# ---- Python deps (your cleaned requirements.txt) ----
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# copy handler
-COPY handler.py /app/handler.py
+# ---- Copy all app code (not only handler.py) ----
+COPY . /app
 
-# serverless entrypoint
-CMD ["python", "-u", "handler.py"]
-
-# snippet to add into your existing Dockerfile build stage
-RUN pip install --no-cache-dir -r requirements.txt && \
-    python - <<'PY'
+# Warm YOLO weights cache (optional)
+RUN python - <<'PY'
 from ultralytics import YOLO
-YOLO('yolov8n.pt')  # download weights to cache
+YOLO('yolov8n.pt')
 PY
+
+# Serverless entrypoint
+CMD ["python", "-u", "handler.py"]
