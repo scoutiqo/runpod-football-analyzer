@@ -20,3 +20,10 @@ COPY handler.py /app/handler.py
 
 # serverless entrypoint
 CMD ["python", "-u", "handler.py"]
+
+# snippet to add into your existing Dockerfile build stage
+RUN pip install --no-cache-dir -r requirements.txt && \
+    python - <<'PY'
+from ultralytics import YOLO
+YOLO('yolov8n.pt')  # download weights to cache
+PY
