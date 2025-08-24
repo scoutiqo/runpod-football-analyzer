@@ -129,12 +129,12 @@ def handler(event):
     job_id = str(uuid.uuid4())
 
     post_rest("analysis_jobs", {
-        "id": job_id,
-        "player_id": player_id,
-        "status": "running",
-        "video_url": video_url,
-        "created_at": now_utc_iso()
-    })
+    "id": job_id,
+    "player_id": player_id,
+    "status": "running",
+    "video_url": video_url
+})
+
 
     local = None
     try:
@@ -144,11 +144,11 @@ def handler(event):
         key = f"players/{player_id}/{job_id}/tracks.json"
         upload_bytes(ANALYSES_BUCKET, key, json.dumps(result).encode("utf-8"), "application/json")
 
-        patch_rest(
-            "analysis_jobs",
-            f"id=eq.{job_id}",
-            {"status": "done", "result_bucket": ANALYSES_BUCKET, "result_path": key, "finished_at": now_utc_iso()}
-        )
+       patch_rest(
+    "analysis_jobs",
+    f"id=eq.{job_id}",
+    {"status": "done", "result_bucket": ANALYSES_BUCKET, "result_path": key}
+)
 
         # IMPORTANT: use UPSERT to avoid duplicate-key errors for the same player_id
         upsert_rest(
@@ -168,7 +168,8 @@ def handler(event):
     except Exception as e:
         tb = traceback.format_exc()
         try:
-            patch_rest("analysis_jobs", f"id=eq.{job_id}", {"status": "error", "error": str(e), "finished_at": now_utc_iso()})
+           patch_rest("analysis_jobs", f"id=eq.{job_id}", {"status": "error", "error": str(e)})
+
         except Exception:
             pass
         # Visible in RunPod logs
