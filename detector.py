@@ -1,4 +1,3 @@
-# detector.py
 from ultralytics import YOLO
 
 class Detector:
@@ -7,7 +6,10 @@ class Detector:
         self.conf = conf
 
     def infer(self, frame_bgr):
-        """Return detections as list of dicts: {cls, conf, x1,y1,x2,y2}."""
+        """
+        Returns list of dicts: {cls, conf, x1,y1,x2,y2}
+        COCO: person=0, sports_ball=32
+        """
         res = self.model.predict(frame_bgr, verbose=False, conf=self.conf)[0]
         out = []
         if res.boxes is None:
@@ -15,6 +17,8 @@ class Detector:
         for b in res.boxes:
             cls = int(b.cls[0])
             x1,y1,x2,y2 = b.xyxy[0].tolist()
-            out.append({"cls": cls, "conf": float(b.conf[0]),
-                        "x1": float(x1), "y1": float(y1), "x2": float(x2), "y2": float(y2)})
+            out.append({
+                "cls": cls, "conf": float(b.conf[0]),
+                "x1": float(x1), "y1": float(y1), "x2": float(x2), "y2": float(y2)
+            })
         return out
