@@ -1,6 +1,7 @@
+# handler.py
 import traceback
 from yt_dlp import YoutubeDL
-import os, json, uuid, tempfile, requests, cv2
+import os, json, uuid, tempfile, requests
 import runpod
 
 from pipeline import run_pipeline  # your pipeline
@@ -9,7 +10,6 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ANALYSES_BUCKET = os.getenv("ANALYSES_BUCKET", "analyses")
 
-
 # ---------- helpers ----------
 def dl_tmp(url: str) -> str:
     """Download to a local temp .mp4. Supports YouTube and direct .mp4 URLs."""
@@ -17,11 +17,16 @@ def dl_tmp(url: str) -> str:
         tmpdir = tempfile.mkdtemp()
         outtmpl = os.path.join(tmpdir, "video.%(ext)s")
         ydl_opts = {
-            "format": "mp4/bestvideo+bestaudio/best",
+            "format": "bv*+ba/best",
             "merge_output_format": "mp4",
             "outtmpl": outtmpl,
             "quiet": True,
             "noprogress": True,
+            # helps with some interstitials; YT may still block -> prefer direct MP4/signed URL
+            "extractor_args": {"youtube": {"player_client": ["android"]}},
+            "retries": 5,
+            "fragment_retries": 5,
+            "concurrent_fragment_downloads": 1,
         }
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
@@ -29,10 +34,12 @@ def dl_tmp(url: str) -> str:
             if fname.lower().endswith(".mp4"):
                 return os.path.join(tmpdir, fname)
         raise RuntimeError("yt-dlp did not produce an mp4 file.")
+
     # direct file download
     r = requests.get(url, stream=True, timeout=60)
     r.raise_for_status()
-    fd, p = tempfile.mkstemp(suffix=".mp4"); os.close(fd)
+    fd, p = tempfile.mkstemp(suffix=".mp4")
+    os.close(fd)
     with open(p, "wb") as f:
         for chunk in r.iter_content(1 << 20):
             if chunk:
@@ -63,21 +70,12 @@ def post_rest(table, row):
     r = requests.post(url, headers=headers, data=json.dumps(row), timeout=30)
     if not r.ok:
         raise RuntimeError(f"post {table} failed {r.status_code}: {r.text}")
-    if not r.text:
-        return {"status_code": r.status_code}
-    try:
-        return r.json()
-    except ValueError:
-        return {"status_code": r.status_code, "raw": r.text[:200]}
+    return r.json() if r.text else {"status_code": r.status_code}
 
 
 def upsert_rest(table, row, on_conflict):
     """INSERT ... ON CONFLICT DO UPDATE via PostgREST."""
-    if isinstance(on_conflict, (list, tuple)):
-        oc = ",".join(on_conflict)
-    else:
-        oc = str(on_conflict)
-
+    oc = ",".join(on_conflict) if isinstance(on_conflict, (list, tuple)) else str(on_conflict)
     url = f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={oc}"
     headers = {
         "Authorization": f"Bearer {SERVICE_ROLE}",
@@ -102,17 +100,7 @@ def patch_rest(table, where, row):
     r = requests.patch(url, headers=headers, data=json.dumps(row), timeout=30)
     if not r.ok:
         raise RuntimeError(f"patch {table} failed {r.status_code}: {r.text}")
-    if not r.text:
-        return {"status_code": r.status_code}
-    try:
-        return r.json()
-    except ValueError:
-        return {"status_code": r.status_code, "raw": r.text[:200]}
-
-
-def now_utc_iso():
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return r.json() if r.text else {"status_code": r.status_code}
 
 
 # ---------- runpod handler ----------
@@ -128,13 +116,13 @@ def handler(event):
 
     job_id = str(uuid.uuid4())
 
+    # Create job row (no created_at)
     post_rest("analysis_jobs", {
-    "id": job_id,
-    "player_id": player_id,
-    "status": "running",
-    "video_url": video_url
-})
-
+        "id": job_id,
+        "player_id": player_id,
+        "status": "running",
+        "video_url": video_url
+    })
 
     local = None
     try:
@@ -144,21 +132,21 @@ def handler(event):
         key = f"players/{player_id}/{job_id}/tracks.json"
         upload_bytes(ANALYSES_BUCKET, key, json.dumps(result).encode("utf-8"), "application/json")
 
-       patch_rest(
-    "analysis_jobs",
-    f"id=eq.{job_id}",
-    {"status": "done", "result_bucket": ANALYSES_BUCKET, "result_path": key}
-)
+        # Mark job done (no finished_at)
+        patch_rest(
+            "analysis_jobs",
+            f"id=eq.{job_id}",
+            {"status": "done", "result_bucket": ANALYSES_BUCKET, "result_path": key}
+        )
 
-        # IMPORTANT: use UPSERT to avoid duplicate-key errors for the same player_id
+        # Keep latest pointer with UPSERT (avoids 409 duplicates)
         upsert_rest(
             "player_latest_analysis",
             {
                 "player_id": player_id,
                 "analysis_job_id": job_id,
                 "result_bucket": ANALYSES_BUCKET,
-                "result_path": key,
-                "updated_at": now_utc_iso()
+                "result_path": key
             },
             on_conflict="player_id"
         )
@@ -168,11 +156,9 @@ def handler(event):
     except Exception as e:
         tb = traceback.format_exc()
         try:
-           patch_rest("analysis_jobs", f"id=eq.{job_id}", {"status": "error", "error": str(e)})
-
+            patch_rest("analysis_jobs", f"id=eq.{job_id}", {"status": "error", "error": str(e)})
         except Exception:
             pass
-        # Visible in RunPod logs
         print("ERROR:", tb, flush=True)
         return {"ok": False, "job_id": job_id, "error": str(e), "traceback": tb}
 
