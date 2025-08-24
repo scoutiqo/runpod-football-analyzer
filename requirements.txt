@@ -12,3 +12,4 @@ filterpy==1.4.5
 lapx==0.5.9
 moviepy==1.0.3
 # matplotlib==3.9.0  # optional
+scikit-learn==1.4.2
