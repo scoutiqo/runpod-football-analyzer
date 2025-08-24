@@ -12,3 +12,5 @@ filterpy==1.4.5
 lapx==0.5.9
 moviepy==1.0.3
 scikit-learn==1.4.2
+torch>=2.1.0
+torchvision>=0.16.0
