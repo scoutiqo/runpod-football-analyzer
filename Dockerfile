@@ -1,4 +1,4 @@
-FROM runpod/serverless:gpu
+FROM ghcr.io/runpod/serverless:gpu
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
