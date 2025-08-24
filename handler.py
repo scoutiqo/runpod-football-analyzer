@@ -10,7 +10,7 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ANALYSES_BUCKET = os.getenv("ANALYSES_BUCKET", "analyses")
 
-# ---------- helpers ----------
+# ---------------- helpers ----------------
 def dl_tmp(url: str) -> str:
     """Download to a local temp .mp4. Supports YouTube and direct .mp4 URLs."""
     if "youtube.com" in url or "youtu.be" in url:
@@ -22,7 +22,7 @@ def dl_tmp(url: str) -> str:
             "outtmpl": outtmpl,
             "quiet": True,
             "noprogress": True,
-            # helps with some interstitials; YT may still block -> prefer direct MP4/signed URL
+            # May help avoid some YT interstitials; direct MP4 is still best.
             "extractor_args": {"youtube": {"player_client": ["android"]}},
             "retries": 5,
             "fragment_retries": 5,
@@ -34,18 +34,16 @@ def dl_tmp(url: str) -> str:
             if fname.lower().endswith(".mp4"):
                 return os.path.join(tmpdir, fname)
         raise RuntimeError("yt-dlp did not produce an mp4 file.")
-
     # direct file download
     r = requests.get(url, stream=True, timeout=60)
     r.raise_for_status()
-    fd, p = tempfile.mkstemp(suffix=".mp4")
-    os.close(fd)
+    fd, p = tempfile.mkdtemp(), None  # ensure cleanup even on exceptions
+    fd2, p = tempfile.mkstemp(suffix=".mp4"); os.close(fd2)
     with open(p, "wb") as f:
         for chunk in r.iter_content(1 << 20):
             if chunk:
                 f.write(chunk)
     return p
-
 
 def upload_bytes(bucket, path, data, content_type):
     url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
@@ -57,7 +55,6 @@ def upload_bytes(bucket, path, data, content_type):
     r = requests.post(url, headers=h, data=data, timeout=120)
     if not r.ok:
         raise RuntimeError(f"upload failed {r.status_code}: {r.text}")
-
 
 def post_rest(table, row):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
@@ -71,7 +68,6 @@ def post_rest(table, row):
     if not r.ok:
         raise RuntimeError(f"post {table} failed {r.status_code}: {r.text}")
     return r.json() if r.text else {"status_code": r.status_code}
-
 
 def upsert_rest(table, row, on_conflict):
     """INSERT ... ON CONFLICT DO UPDATE via PostgREST."""
@@ -88,22 +84,7 @@ def upsert_rest(table, row, on_conflict):
         raise RuntimeError(f"upsert {table} failed {r.status_code}: {r.text}")
     return r.json() if r.text else {"status_code": r.status_code}
 
-
-def patch_rest(table, where, row):
-    url = f"{SUPABASE_URL}/rest/v1/{table}?{where}"
-    headers = {
-        "Authorization": f"Bearer {SERVICE_ROLE}",
-        "apikey": SERVICE_ROLE,
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-    }
-    r = requests.patch(url, headers=headers, data=json.dumps(row), timeout=30)
-    if not r.ok:
-        raise RuntimeError(f"patch {table} failed {r.status_code}: {r.text}")
-    return r.json() if r.text else {"status_code": r.status_code}
-
-
-# ---------- runpod handler ----------
+# ---------------- runpod handler ----------------
 def handler(event):
     inp = event.get("input", {}) or {}
     player_id  = str(inp.get("player_id", "")).strip()
@@ -116,13 +97,12 @@ def handler(event):
 
     job_id = str(uuid.uuid4())
 
-    # Create job row (no created_at)
-    post_rest("analysis_jobs", {
-        "id": job_id,
-        "player_id": player_id,
-        "status": "running",
-        "video_url": video_url
-    })
+    # mark RUNNING via UPSERT (no created_at/finished_at anywhere)
+    upsert_rest(
+        "analysis_jobs",
+        {"id": job_id, "player_id": player_id, "status": "running", "video_url": video_url},
+        on_conflict="id"
+    )
 
     local = None
     try:
@@ -132,14 +112,20 @@ def handler(event):
         key = f"players/{player_id}/{job_id}/tracks.json"
         upload_bytes(ANALYSES_BUCKET, key, json.dumps(result).encode("utf-8"), "application/json")
 
-        # Mark job done (no finished_at)
-        patch_rest(
+        # mark DONE via UPSERT
+        upsert_rest(
             "analysis_jobs",
-            f"id=eq.{job_id}",
-            {"status": "done", "result_bucket": ANALYSES_BUCKET, "result_path": key}
+            {
+                "id": job_id,
+                "player_id": player_id,
+                "status": "done",
+                "result_bucket": ANALYSES_BUCKET,
+                "result_path": key
+            },
+            on_conflict="id"
         )
 
-        # Keep latest pointer with UPSERT (avoids 409 duplicates)
+        # latest pointer via UPSERT (avoid 409)
         upsert_rest(
             "player_latest_analysis",
             {
@@ -156,7 +142,12 @@ def handler(event):
     except Exception as e:
         tb = traceback.format_exc()
         try:
-            patch_rest("analysis_jobs", f"id=eq.{job_id}", {"status": "error", "error": str(e)})
+            # mark ERROR via UPSERT (only known columns)
+            upsert_rest(
+                "analysis_jobs",
+                {"id": job_id, "player_id": player_id, "status": "error"},
+                on_conflict="id"
+            )
         except Exception:
             pass
         print("ERROR:", tb, flush=True)
@@ -168,6 +159,5 @@ def handler(event):
                 os.remove(local)
             except Exception:
                 pass
-
 
 runpod.serverless.start({"handler": handler})
