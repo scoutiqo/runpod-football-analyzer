@@ -1,3 +1,4 @@
+import traceback
 from yt_dlp import YoutubeDL
 import os, json, uuid, tempfile, requests, cv2
 import runpod
@@ -106,9 +107,15 @@ def handler(event):
           "result_bucket": ANALYSES_BUCKET, "result_path": key
         })
         return {"ok": True, "job_id": job_id, "bucket": ANALYSES_BUCKET, "path": key}
-    except Exception as e:
+   except Exception as e:
+    tb = traceback.format_exc()
+    try:
         patch_rest("analysis_jobs", f"id=eq.{job_id}", {"status":"error","error":str(e)})
-        return {"ok": False, "job_id": job_id, "error": str(e)}
+    except Exception:
+        pass
+    print("ERROR:", tb, flush=True)  # visible in RunPod Logs
+    return {"ok": False, "job_id": job_id, "error": str(e), "traceback": tb}
+
     finally:
         if local and os.path.exists(local):
             try: os.remove(local)
