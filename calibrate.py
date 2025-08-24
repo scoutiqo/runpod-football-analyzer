@@ -1,21 +1,16 @@
-# calibrate.py
-import cv2, numpy as np
+import numpy as np
 
-def estimate_homography(first_frame_bgr):
+def estimate_homography(_first_frame_bgr):
     """
-    Try to find pitch lines + keypoints and solve H (image->field).
-    Return H (3x3) or None. Field is 105x68 (meters).
+    TODO: implement pitch line/keypoint detector -> RANSAC homography.
+    For now return None and we work in pixels (frontend still works).
     """
-    # Minimal placeholder: return None to run in pixel mode initially.
-    # TODO:
-    #  - Detect sidelines/box lines via Hough + template
-    #  - Match to canonical field points, RANSAC homography
     return None
 
-def image_to_field(H, x_px, y_px, pitch_size=(105,68), img_shape=None):
-    if H is None:  # px mode fallback
+def image_to_field(H, x_px, y_px):
+    if H is None:
         return None
-    p = np.array([x_px, y_px, 1.0])
+    p = np.array([x_px, y_px, 1.0], dtype=float)
     q = H @ p
     q /= q[2]
     return float(q[0]), float(q[1])
