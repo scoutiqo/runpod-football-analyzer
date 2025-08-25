@@ -1,3 +1,4 @@
+# pipeline.py
 import cv2
 from detector import Detector
 from tracker_players import PlayerTracker
@@ -22,7 +23,7 @@ def run_pipeline(video_path: str, max_frames=150, frame_skip=2):
     btrk = BallTracker()
     tass = TeamAssigner()
 
-    raw = []
+    out_records = []   # <-- keep output rows here (do not overwrite)
     frames = 0
     idx = 0
 
@@ -36,32 +37,29 @@ def run_pipeline(video_path: str, max_frames=150, frame_skip=2):
 
         t = idx / fps
 
-        # ---- Normalize detector output so trackers never see None ----
-       # --- Normalize detector output to a dict-of-arrays ---
-raw = det.infer(frame)
-xyxy, conf, cls = [], [], []
+        # --- Normalize detector output to dict-of-arrays (xyxy/conf/cls) ---
+        det_raw = det.infer(frame)
+        xyxy, conf, cls = [], [], []
 
-if isinstance(raw, dict) and "xyxy" in raw:
-    # already dict-of-arrays
-    xyxy = raw.get("xyxy") or []
-    conf = raw.get("conf") or []
-    cls  = raw.get("cls")  or []
-elif isinstance(raw, (list, tuple)):
-    # convert list-of-dicts -> dict-of-arrays
-    for d in raw:
-        if not isinstance(d, dict):
-            continue
-        x1 = d.get("x1"); y1 = d.get("y1"); x2 = d.get("x2"); y2 = d.get("y2")
-        if x1 is None or y1 is None or x2 is None or y2 is None:
-            continue
-        xyxy.append([float(x1), float(y1), float(x2), float(y2)])
-        conf.append(float(d.get("conf", 0.0)))
-        cls.append(int(d.get("cls", d.get("class_id", -1))))
+        if isinstance(det_raw, dict) and "xyxy" in det_raw:
+            xyxy = det_raw.get("xyxy") or []
+            conf = det_raw.get("conf") or []
+            cls  = det_raw.get("cls")  or []
+        elif isinstance(det_raw, (list, tuple)):
+            for d in det_raw:
+                if not isinstance(d, dict):
+                    continue
+                x1 = d.get("x1"); y1 = d.get("y1"); x2 = d.get("x2"); y2 = d.get("y2")
+                if None in (x1, y1, x2, y2):
+                    continue
+                xyxy.append([float(x1), float(y1), float(x2), float(y2)])
+                conf.append(float(d.get("conf", 0.0)))
+                cls.append(int(d.get("cls", d.get("class_id", -1))))
 
-dets = {"xyxy": xyxy, "conf": conf, "cls": cls}
+        dets = {"xyxy": xyxy, "conf": conf, "cls": cls}
 
-players = ptrk.update(dets)
-ball    = btrk.update(dets)
+        players = ptrk.update(dets)      # list of dicts with x1..y2,id,cls,conf
+        ball    = btrk.update(dets)      # dict {x1..y2,cls,conf} or None
 
         # update team model with current boxes
         tass.observe(
@@ -84,7 +82,7 @@ ball    = btrk.update(dets)
             xy = image_to_field(Hmat, cx, cy)
             if xy:
                 rec["x_m"], rec["y_m"] = xy
-            raw.append(rec)
+            out_records.append(rec)
 
         # ball
         if ball:
@@ -99,7 +97,7 @@ ball    = btrk.update(dets)
             xy = image_to_field(Hmat, cx, cy)
             if xy:
                 rec["x_m"], rec["y_m"] = xy
-            raw.append(rec)
+            out_records.append(rec)
 
         frames += 1
         if frames >= max_frames:
@@ -109,7 +107,7 @@ ball    = btrk.update(dets)
 
     # smooth + speed
     have_metric = Hmat is not None
-    tracks = smooth_and_speed(raw, have_metric=have_metric)
+    tracks = smooth_and_speed(out_records, have_metric=have_metric)
 
     return {
         "version": 2,
