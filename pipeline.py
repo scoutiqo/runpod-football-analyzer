@@ -35,9 +35,17 @@ def run_pipeline(video_path: str, max_frames=150, frame_skip=2):
             continue
 
         t = idx / fps
-        dets = det.infer(frame)
-        players = ptrk.update(dets)      # [{id,x1,y1,x2,y2,cls,conf}, ...]
-        ball    = btrk.update(dets)      # {x1,y1,x2,y2,cls,conf} or None
+# Normalize detector output so trackers never see None
+dets = det.infer(frame) or {}
+if not isinstance(dets, dict):
+    dets = {}
+dets.setdefault("xyxy", [])
+dets.setdefault("conf", [])
+dets.setdefault("cls",  [])
+
+players = ptrk.update(dets)      # [{id,x1,y1,x2,y2,cls,conf}, ...]
+ball    = btrk.update(dets)      # {x1,y1,x2,y2,cls,conf} or None
+
 
         # update team model with current boxes
         tass.observe(frame, [{"id":p["id"], "x1":p["x1"], "y1":p["y1"], "x2":p["x2"], "y2":p["y2"]} for p in players])
