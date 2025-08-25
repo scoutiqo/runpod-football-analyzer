@@ -37,15 +37,31 @@ def run_pipeline(video_path: str, max_frames=150, frame_skip=2):
         t = idx / fps
 
         # ---- Normalize detector output so trackers never see None ----
-        dets = det.infer(frame) or {}
-        if not isinstance(dets, dict):
-            dets = {}
-        dets.setdefault("xyxy", [])
-        dets.setdefault("conf", [])
-        dets.setdefault("cls",  [])
+       # --- Normalize detector output to a dict-of-arrays ---
+raw = det.infer(frame)
+xyxy, conf, cls = [], [], []
 
-        players = ptrk.update(dets)      # [{id,x1,y1,x2,y2,cls,conf}, ...]
-        ball    = btrk.update(dets)      # {x1,y1,x2,y2,cls,conf} or None
+if isinstance(raw, dict) and "xyxy" in raw:
+    # already dict-of-arrays
+    xyxy = raw.get("xyxy") or []
+    conf = raw.get("conf") or []
+    cls  = raw.get("cls")  or []
+elif isinstance(raw, (list, tuple)):
+    # convert list-of-dicts -> dict-of-arrays
+    for d in raw:
+        if not isinstance(d, dict):
+            continue
+        x1 = d.get("x1"); y1 = d.get("y1"); x2 = d.get("x2"); y2 = d.get("y2")
+        if x1 is None or y1 is None or x2 is None or y2 is None:
+            continue
+        xyxy.append([float(x1), float(y1), float(x2), float(y2)])
+        conf.append(float(d.get("conf", 0.0)))
+        cls.append(int(d.get("cls", d.get("class_id", -1))))
+
+dets = {"xyxy": xyxy, "conf": conf, "cls": cls}
+
+players = ptrk.update(dets)
+ball    = btrk.update(dets)
 
         # update team model with current boxes
         tass.observe(
