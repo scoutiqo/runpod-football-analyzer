@@ -1,3 +1,4 @@
+print(">>> BallTracker v2 loaded", flush=True)
 # ball_tracker.py
 from typing import Any, Dict, List, Optional
 SPORTS_BALL_ID = 32  # COCO ball class
@@ -20,7 +21,8 @@ class BallTracker:
             cls  = dets.get("cls")  or []
             n = min(len(xyxy), len(conf), len(cls))
             for i in range(n):
-                c = int(cls[i]) if cls[i] is not None else -1
+                val = cls[i]
+                c = int(getattr(val, "item", lambda: val)()) if val is not None else -1
                 if c == self.cls_id and (conf[i] if i < len(conf) else 0.0) >= self.min_conf:
                     x1, y1, x2, y2 = [float(v) for v in xyxy[i]]
                     out.append({"x1":x1, "y1":y1, "x2":x2, "y2":y2, "cls":c, "conf":float(conf[i])})
@@ -30,7 +32,8 @@ class BallTracker:
         if isinstance(dets, (list, tuple)):
             for d in dets:
                 if not isinstance(d, dict): continue
-                c = int(d.get("cls", d.get("class_id", -1)))
+                val = d.get("cls", d.get("class_id", d.get("class", -1)))
+                c = int(getattr(val, "item", lambda: val)())
                 if c == self.cls_id and float(d.get("conf", 0.0)) >= self.min_conf:
                     out.append({
                         "x1": float(d.get("x1", 0)), "y1": float(d.get("y1", 0)),
