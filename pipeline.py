@@ -35,20 +35,23 @@ def run_pipeline(video_path: str, max_frames=150, frame_skip=2):
             continue
 
         t = idx / fps
-# Normalize detector output so trackers never see None
-dets = det.infer(frame) or {}
-if not isinstance(dets, dict):
-    dets = {}
-dets.setdefault("xyxy", [])
-dets.setdefault("conf", [])
-dets.setdefault("cls",  [])
 
-players = ptrk.update(dets)      # [{id,x1,y1,x2,y2,cls,conf}, ...]
-ball    = btrk.update(dets)      # {x1,y1,x2,y2,cls,conf} or None
+        # ---- Normalize detector output so trackers never see None ----
+        dets = det.infer(frame) or {}
+        if not isinstance(dets, dict):
+            dets = {}
+        dets.setdefault("xyxy", [])
+        dets.setdefault("conf", [])
+        dets.setdefault("cls",  [])
 
+        players = ptrk.update(dets)      # [{id,x1,y1,x2,y2,cls,conf}, ...]
+        ball    = btrk.update(dets)      # {x1,y1,x2,y2,cls,conf} or None
 
         # update team model with current boxes
-        tass.observe(frame, [{"id":p["id"], "x1":p["x1"], "y1":p["y1"], "x2":p["x2"], "y2":p["y2"]} for p in players])
+        tass.observe(
+            frame,
+            [{"id": p["id"], "x1": p["x1"], "y1": p["y1"], "x2": p["x2"], "y2": p["y2"]} for p in players]
+        )
 
         # players -> centers (+team)
         for p in players:
@@ -92,7 +95,7 @@ ball    = btrk.update(dets)      # {x1,y1,x2,y2,cls,conf} or None
     have_metric = Hmat is not None
     tracks = smooth_and_speed(raw, have_metric=have_metric)
 
-    result = {
+    return {
         "version": 2,
         "meta": {
             "fps": fps,
@@ -102,7 +105,6 @@ ball    = btrk.update(dets)      # {x1,y1,x2,y2,cls,conf} or None
             "homography": (Hmat.tolist() if Hmat is not None else None)
         },
         "tracks": tracks,
-        "events": [],      # next milestones
-        "metrics": {}      # next milestones
+        "events": [],
+        "metrics": {}
     }
-    return result
