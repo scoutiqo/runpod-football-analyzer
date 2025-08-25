@@ -32,8 +32,12 @@ class BallTracker:
         if isinstance(dets, (list, tuple)):
             for d in dets:
                 if not isinstance(d, dict): continue
-                val = d.get("cls", d.get("class_id", d.get("class", -1)))
-                c = int(getattr(val, "item", lambda: val)())
+val = d.get("cls", d.get("class_id", d.get("class", -1)))
+try:
+    c = int(getattr(val, "item", lambda: val)()) if val is not None else -1
+except Exception:
+    c = -1
+
                 if c == self.cls_id and float(d.get("conf", 0.0)) >= self.min_conf:
                     out.append({
                         "x1": float(d.get("x1", 0)), "y1": float(d.get("y1", 0)),
