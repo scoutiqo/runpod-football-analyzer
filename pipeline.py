@@ -1,3 +1,4 @@
+# pipeline.py
 import cv2
 from detector import Detector
 from tracker_players import PlayerTracker
@@ -9,8 +10,10 @@ from smooth import smooth_and_speed
 def _normalize_dets(raw):
     """
     Normalize detector output to dict-of-arrays:
-      {"xyxy": [[x1,y1,x2,y2], ...], "conf": [...], "cls": [...]}
-    Accepts dict-of-arrays or list-of-dicts.
+      {"xyxy": [[x1,y1,x2,y2], ...], "conf": [..], "cls": [..]}
+    Accepts:
+      - dict-of-arrays (passes through)
+      - list-of-dicts with keys x1,y1,x2,y2,conf,cls/class_id/class
     """
     if isinstance(raw, dict) and "xyxy" in raw:
         return {
@@ -29,15 +32,18 @@ def _normalize_dets(raw):
                 continue
             xyxy.append([float(x1), float(y1), float(x2), float(y2)])
             conf.append(float(d.get("conf", 0.0)))
-            cls.append(int(d.get("cls", d.get("class_id", -1))))
+            cval = d.get("cls", d.get("class_id", d.get("class", -1)))
+            try:
+                c = int(getattr(cval, "item", lambda: cval)())
+            except Exception:
+                c = -1
+            cls.append(c)
     return {"xyxy": xyxy, "conf": conf, "cls": cls}
 
-def run_pipeline(
-    video_path: str,
-    max_frames: int = 150,
-    frame_skip: int = 2,
-    cfg: dict | None = None,          # <-- made optional, moved to the end
-):
+def run_pipeline(video_path: str, cfg: dict | None = None, max_frames=150, frame_skip=2):
+    """
+    cfg is optional to remain backward-compatible with handler.py.
+    """
     cfg = cfg or {}
 
     cap = cv2.VideoCapture(video_path)
@@ -47,22 +53,22 @@ def run_pipeline(
     W   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
     H   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 720)
 
-    # Homography from first frame
-    ok, first = cap.read(); assert ok
+    # read first frame for homography attempt
+    ok, first = cap.read(); assert ok, "Failed to read first frame"
     Hmat = estimate_homography(first)
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-    # Allow cfg to override sampling if present
+    # allow cfg overrides
     frame_cfg   = cfg.get("frame", {})
     frame_skip  = int(frame_cfg.get("frame_skip", frame_skip))
     max_frames  = int(frame_cfg.get("max_frames", max_frames))
 
-    det  = Detector(cfg or {})
+    det  = Detector(cfg)
     ptrk = PlayerTracker(cfg.get("tracking", {}))
     btrk = BallTracker(cfg.get("ball", {}))
     tass = TeamAssigner()
 
-    raw_points = []
+    points = []
     frames = 0
     idx = 0
 
@@ -76,19 +82,23 @@ def run_pipeline(
 
         t = idx / fps
 
-        # detections -> normalized dict-of-arrays
-        dets    = _normalize_dets(det.infer(frame))
-        players = ptrk.update(dets)
-        ball    = btrk.update(dets)
+        # detector -> normalized schema
+        dets = _normalize_dets(det.infer(frame))
+        # sanity assert (helps catch weird detector outputs fast)
+        assert isinstance(dets, dict) and all(k in dets for k in ("xyxy","conf","cls")), "Detector output schema invalid"
 
-        # teach team colors
-        tass.observe(
-            frame,
-            [{"id": p["id"], "x1": p["x1"], "y1": p["y1"], "x2": p["x2"], "y2": p["y2"]} for p in players]
-        )
+        players = ptrk.update(dets)      # [{id,x1,y1,x2,y2,cls,conf}, ...]
+        ball    = btrk.update(dets)      # {x1,y1,x2,y2,cls,conf} or None
 
-        # players -> center points (+team)
-        for p in players:
+        # update team model
+        if players:
+            tass.observe(
+                frame,
+                [{"id":p["id"], "x1":p["x1"], "y1":p["y1"], "x2":p["x2"], "y2":p["y2"]} for p in players]
+            )
+
+        # players -> centers (+team)
+        for p in players or []:
             cx = (p["x1"] + p["x2"]) / 2.0
             cy = (p["y1"] + p["y2"]) / 2.0
             rec = {
@@ -97,14 +107,14 @@ def run_pipeline(
                 "id": p["id"],
                 "team": tass.get_team(p["id"]),
                 "x_px": float(cx),
-                "y_px": float(cy),
+                "y_px": float(cy)
             }
             xy = image_to_field(Hmat, cx, cy)
             if xy:
                 rec["x_m"], rec["y_m"] = xy
-            raw_points.append(rec)
+            points.append(rec)
 
-        # ball -> center point
+        # ball center
         if ball:
             cx = (ball["x1"] + ball["x2"]) / 2.0
             cy = (ball["y1"] + ball["y2"]) / 2.0
@@ -112,12 +122,12 @@ def run_pipeline(
                 "t": round(t, 3),
                 "type": "ball",
                 "x_px": float(cx),
-                "y_px": float(cy),
+                "y_px": float(cy)
             }
             xy = image_to_field(Hmat, cx, cy)
             if xy:
                 rec["x_m"], rec["y_m"] = xy
-            raw_points.append(rec)
+            points.append(rec)
 
         frames += 1
         if frames >= max_frames:
@@ -125,9 +135,7 @@ def run_pipeline(
 
     cap.release()
 
-    # smooth + speed
-    tracks = smooth_and_speed(raw_points, have_metric=(Hmat is not None))
-
+    tracks = smooth_and_speed(points, have_metric=(Hmat is not None))
     return {
         "version": 2,
         "meta": {
@@ -135,9 +143,9 @@ def run_pipeline(
             "width": W, "height": H,
             "frame_skip": frame_skip,
             "pitch_m": [105, 68],
-            "homography": (Hmat.tolist() if Hmat is not None else None),
+            "homography": (Hmat.tolist() if Hmat is not None else None)
         },
         "tracks": tracks,
         "events": [],
-        "metrics": {},
+        "metrics": {}
     }
