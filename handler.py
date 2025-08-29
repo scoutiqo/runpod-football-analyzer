@@ -1,20 +1,26 @@
-# handler.py (UPDATED) — keeps your Supabase + DB logic
-# Changes vs your current file:
-# 1) After writing tracks.json, it now RETURNS a signed, fetchable URL (correct prefix /storage/v1).
-# 2) Minor hardening + clearer error messages.
+# handler.py (COMBINED)
+# - Mode A (Realtime): accepts segment_urls + callback_url and posts live progress events.
+# - Mode B (Existing): accepts video_url + player_id, runs your pipeline, uploads to Supabase.
 
-import traceback
+import os, json, uuid, tempfile, time, traceback
 from yt_dlp import YoutubeDL
-import os, json, uuid, tempfile, requests
+import requests
 import runpod
 
-from pipeline import run_pipeline  # our drop-in pipeline below
+from pipeline import run_pipeline  # your existing pipeline
 
-SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
-SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+SUPABASE_URL   = os.environ["SUPABASE_URL"].rstrip("/")
+SERVICE_ROLE   = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ANALYSES_BUCKET = os.getenv("ANALYSES_BUCKET", "analyses")
 
 # ---------------- helpers ----------------
+def post_cb(url, payload):
+    """POST JSON to your FastAPI /progress/{job_id} callback."""
+    try:
+        requests.post(url, json=payload, timeout=30)
+    except Exception as e:
+        print("callback failed:", e, flush=True)
+
 def dl_tmp(url: str) -> str:
     """Download to a local temp .mp4. Supports YouTube and direct .mp4 URLs."""
     if "youtube.com" in url or "youtu.be" in url:
@@ -59,19 +65,6 @@ def upload_bytes(bucket, path, data, content_type):
     if not r.ok:
         raise RuntimeError(f"upload failed {r.status_code}: {r.text}")
 
-def post_rest(table, row):
-    url = f"{SUPABASE_URL}/rest/v1/{table}"
-    headers = {
-        "Authorization": f"Bearer {SERVICE_ROLE}",
-        "apikey": SERVICE_ROLE,
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-    }
-    r = requests.post(url, headers=headers, data=json.dumps(row), timeout=60)
-    if not r.ok:
-        raise RuntimeError(f"post {table} failed {r.status_code}: {r.text}")
-    return r.json() if r.text else {"status_code": r.status_code}
-
 def upsert_rest(table, row, on_conflict):
     oc = ",".join(on_conflict) if isinstance(on_conflict, (list, tuple)) else str(on_conflict)
     url = f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={oc}"
@@ -87,7 +80,6 @@ def upsert_rest(table, row, on_conflict):
     return r.json() if r.text else {"status_code": r.status_code}
 
 def sign_storage_path(bucket, path, expires=86400):
-    """Return absolute signed URL with the correct /storage/v1 prefix."""
     url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{path}"
     h = { "Authorization": f"Bearer {SERVICE_ROLE}", "Content-Type": "application/json" }
     r = requests.post(url, headers=h, data=json.dumps({"expiresIn": int(expires)}), timeout=30)
@@ -97,23 +89,89 @@ def sign_storage_path(bucket, path, expires=86400):
     signed = data.get("signedURL") or data.get("signedUrl")
     if not signed:
         raise RuntimeError(f"sign response missing signedURL: {data}")
-    # IMPORTANT: prepend /storage/v1
     return f"{SUPABASE_URL}/storage/v1{signed}"
 
 # ---------------- runpod handler ----------------
 def handler(event):
-    inp = event.get("input", {}) or {}
+    """
+    Mode A (Realtime segments):
+      input = {
+        "segment_urls": ["https://.../seg_000.mp4", ...],
+        "callback_url": "https://<PUBLIC_BASE_URL>/progress/<job_id>",
+        "simulate": true,                # default true -> fake metrics quickly
+        "max_frames": 150, "frame_skip": 2
+      }
+
+    Mode B (Existing single video -> Supabase):
+      input = {
+        "player_id": "uuid-or-id",
+        "video_url": "https://...mp4 | youtube url",
+        "max_frames": 150, "frame_skip": 2
+      }
+    """
+    inp = (event.get("input") or {})
+    segs = inp.get("segment_urls")
+    cb   = inp.get("callback_url")
+
+    # ---------- Mode A: realtime (segments + callback) ----------
+    if segs and cb:
+        simulate   = bool(inp.get("simulate", True))
+        max_frames = int(inp.get("max_frames", 150))
+        frame_skip = int(inp.get("frame_skip", 2))
+
+        processed = 0
+        for i, url in enumerate(segs):
+            post_cb(cb, {"type": "segment_start", "seg": i, "url": url})
+            try:
+                if simulate:
+                    # Quick, guaranteed progress for end-to-end test
+                    time.sleep(0.6)
+                    metrics = {
+                        "possession_pct": {"Home": 50 + (i % 5), "Away": 50 - (i % 5)},
+                        "per_player": {"7": {"top_speed_mps": 8.5 + 0.1*i}}
+                    }
+                else:
+                    # Real processing path per segment (slower)
+                    local = dl_tmp(url)
+                    try:
+                        tracks = run_pipeline(local, max_frames=max_frames, frame_skip=frame_skip)
+                        # Example very light metric (customize as you like)
+                        tracks_count = 0
+                        try:
+                            # if your pipeline returns dict with e.g. "tracks"
+                            tracks_count = len(tracks.get("tracks", [])) if isinstance(tracks, dict) else 0
+                        except Exception:
+                            pass
+                        metrics = {
+                            "tracks_found": tracks_count,
+                            "segment_index": i
+                        }
+                    finally:
+                        try:
+                            if local and os.path.exists(local): os.remove(local)
+                        except Exception:
+                            pass
+
+                post_cb(cb, {"type": "partial_metrics", "seg": i, **metrics})
+                processed += 1
+            except Exception as e:
+                post_cb(cb, {"type": "error", "seg": i, "message": str(e)})
+
+        post_cb(cb, {"type": "done", "total_segments": len(segs), "processed": processed})
+        return {"ok": True, "mode": "segments", "processed": processed}
+
+    # ---------- Mode B: your existing single-video Supabase pipeline ----------
     player_id  = str(inp.get("player_id", "")).strip()
     video_url  = str(inp.get("video_url", "")).strip()
     max_frames = int(inp.get("max_frames", 150))
     frame_skip = int(inp.get("frame_skip", 2))
 
     if not player_id or not video_url:
-        return {"ok": False, "error": "player_id and video_url required"}
+        return {"ok": False, "error": "Either provide {segment_urls, callback_url} OR {player_id, video_url}"}
 
     job_id = str(uuid.uuid4())
 
-    # mark RUNNING
+    # mark RUNNING (best effort)
     try:
         upsert_rest(
             "analysis_jobs",
@@ -121,22 +179,20 @@ def handler(event):
             on_conflict="id"
         )
     except Exception as e:
-        # proceed even if table not configured yet
         print("WARN: analysis_jobs upsert running failed:", e, flush=True)
 
     local = None
     try:
         local = dl_tmp(video_url)
 
-        # ---- RUN YOUR PIPELINE (now guaranteed to return non-empty tracks if people are detected)
+        # run your pipeline
         result_tracks = run_pipeline(local, max_frames=max_frames, frame_skip=frame_skip)
 
         key = f"players/{player_id}/{job_id}/tracks.json"
         upload_bytes(ANALYSES_BUCKET, key, json.dumps(result_tracks).encode("utf-8"), "application/json")
-
         tracks_url = sign_storage_path(ANALYSES_BUCKET, key, expires=86400)
 
-        # mark DONE
+        # mark DONE (best effort)
         try:
             upsert_rest(
                 "analysis_jobs",
@@ -164,7 +220,7 @@ def handler(event):
         except Exception as e:
             print("WARN: upsert done failed:", e, flush=True)
 
-        return {"ok": True, "job_id": job_id, "bucket": ANALYSES_BUCKET, "path": key, "tracks_url": tracks_url}
+        return {"ok": True, "mode": "single_video", "job_id": job_id, "bucket": ANALYSES_BUCKET, "path": key, "tracks_url": tracks_url}
 
     except Exception as e:
         tb = traceback.format_exc()
@@ -177,11 +233,12 @@ def handler(event):
         except Exception:
             pass
         print("ERROR:", tb, flush=True)
-        return {"ok": False, "job_id": job_id, "error": str(e), "traceback": tb}
+        return {"ok": False, "mode": "single_video", "job_id": job_id, "error": str(e), "traceback": tb}
 
     finally:
         if local and os.path.exists(local):
             try: os.remove(local)
             except Exception: pass
 
+# Start serverless handler
 runpod.serverless.start({"handler": handler})
