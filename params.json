@@ -1,0 +1,8 @@
+{
+  "conf_player": 0.3,
+  "conf_ball": 0.12,
+  "nms_iou": 0.5,
+  "min_track_len": 9,
+  "smooth_sigma": 4,
+  "kalman": true
+}
