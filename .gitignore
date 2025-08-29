@@ -1,6 +1,29 @@
-﻿__pycache__/
+﻿# Python
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
 *.patch
+
+# Local outputs
 metrics.json
 tracks.json
 tracks_norm.json
+
+# Environments / secrets
+.env
+.env.*.local
+.venv/
+*.env
+
+# Node / frontend
+node_modules/
+dist/
+build/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
