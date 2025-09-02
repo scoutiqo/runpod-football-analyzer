@@ -1,4 +1,4 @@
-# server.py
+# server/server.py
 import os, uuid, json, tempfile, subprocess, time, logging
 from pathlib import Path
 from typing import Dict, List
@@ -22,6 +22,11 @@ PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8080").rstrip("
 RUNPOD_ENDPOINT = os.getenv("RUNPOD_ENDPOINT", "").strip()  # e.g. https://api.runpod.ai/v2/<endpoint-id>/run
 RUNPOD_API_KEY  = os.getenv("RUNPOD_API_KEY", "").strip()
 
+# Supabase (server-side only, required by /upload in Step 2+)
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "scoutiqo")
+
 app = FastAPI(title="ScoutIQO Analyzer", docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json")
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
@@ -30,7 +35,7 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("uvicorn")
 
-# -------- static media root (segments served at /media/<job_id>/seg_XXX.mp4) --------
+# -------- static media root (kept for compatibility; /upload no longer uses this) --------
 MEDIA_ROOT = Path("data")
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
@@ -59,8 +64,11 @@ def _run_ffmpeg(cmd: list):
         log.error("FFmpeg failed:\n%s", out[:2000])
         raise RuntimeError(out)
 
-def transcode_and_segment(local_input: str, seg_seconds: int, job_id: str) -> list[str]:
-    # normalize -> 1280p max, 25fps, GOP=2s -> then segment
+def transcode_and_segment_local(local_input: str, seg_seconds: int, job_id: str) -> list[Path]:
+    """
+    Normalize video then segment into a temporary directory.
+    Returns a list of local Path objects to seg_XXX.mp4
+    """
     tmp_norm = tempfile.mktemp(suffix=".mp4")
     _run_ffmpeg([
         "ffmpeg","-y","-hwaccel","auto","-i", local_input,
@@ -70,22 +78,70 @@ def transcode_and_segment(local_input: str, seg_seconds: int, job_id: str) -> li
         "-c:a","aac","-ac","1","-ar","32000","-b:a","64k",
         tmp_norm
     ])
-    out_dir = MEDIA_ROOT / job_id
+    out_dir = Path(tempfile.mkdtemp()) / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
     _run_ffmpeg([
         "ffmpeg","-y","-i", tmp_norm, "-reset_timestamps","1","-map","0","-c","copy",
         "-segment_time", str(seg_seconds), "-f","segment", str(out_dir / "seg_%03d.mp4")
     ])
-    return [f"{PUBLIC_BASE_URL}/media/{job_id}/{p.name}" for p in sorted(out_dir.glob("seg_*.mp4"))]
+    return sorted(out_dir.glob("seg_*.mp4"))
 
-def segment_copy_only(local_input: str, seg_seconds: int, job_id: str) -> list[str]:
-    out_dir = MEDIA_ROOT / job_id
+def segment_copy_only_local(local_input: str, seg_seconds: int, job_id: str) -> list[Path]:
+    """
+    Copy-only segmentation into a temporary directory.
+    Returns a list of local Path objects to seg_XXX.mp4
+    """
+    out_dir = Path(tempfile.mkdtemp()) / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
     _run_ffmpeg([
         "ffmpeg","-y","-i", local_input, "-reset_timestamps","1","-map","0","-c","copy",
         "-segment_time", str(seg_seconds), "-f","segment", str(out_dir / "seg_%03d.mp4")
     ])
-    return [f"{PUBLIC_BASE_URL}/media/{job_id}/{p.name}" for p in sorted(out_dir.glob("seg_*.mp4"))]
+    return sorted(out_dir.glob("seg_*.mp4"))
+
+# -------- Supabase storage client --------
+def _guess_ct(path: str) -> str:
+    import mimetypes
+    return mimetypes.guess_type(path)[0] or "application/octet-stream"
+
+def _sb_headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+
+def _sb_base() -> str:
+    return f"{SUPABASE_URL}/storage/v1"
+
+def supabase_put_file(local_path: str, object_key: str) -> dict:
+    """
+    Upload local file to Supabase bucket at object_key.
+    Returns: {"bucket": str, "key": str, "signed_url": str, "public_url": str}
+    """
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(500, "Supabase env not set (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)")
+    p = Path(local_path)
+    if not p.exists():
+        raise FileNotFoundError(local_path)
+    url = f"{_sb_base()}/object/{SUPABASE_BUCKET}/{object_key}"
+    with open(p, "rb") as f:
+        r = requests.post(url, headers={**_sb_headers(), "Content-Type": _guess_ct(str(p))}, data=f)
+    if r.status_code >= 300:
+        raise HTTPException(500, f"Supabase upload failed {r.status_code}: {r.text[:400]}")
+    # signed url (24h)
+    signed = supabase_sign_url(object_key, expires_in=24*3600)
+    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{object_key}"
+    return {"bucket": SUPABASE_BUCKET, "key": object_key, "signed_url": signed, "public_url": public_url}
+
+def supabase_sign_url(object_key: str, expires_in: int = 3600) -> str:
+    url = f"{_sb_base()}/object/sign/{SUPABASE_BUCKET}/{object_key}"
+    r = requests.post(url, headers=_sb_headers(), json={"expiresIn": expires_in})
+    if r.status_code >= 300:
+        raise HTTPException(500, f"Supabase sign failed {r.status_code}: {r.text[:400]}")
+    signed_path = (r.json().get("signedURL") or r.json().get("signedUrl"))
+    if not signed_path:
+        raise HTTPException(500, f"Supabase sign response missing signedURL: {r.text[:400]}")
+    return f"{SUPABASE_URL}/storage/v1{signed_path}"
 
 # -------- API --------
 @app.get("/")
@@ -98,21 +154,51 @@ def health():
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...), segment_seconds: int = 20, fast: int = 1):
+    """
+    Step 2 version:
+      1) save upload to a temp file
+      2) segment locally into temp dir
+      3) upload each seg to Supabase Storage
+      4) return SIGNED URLs (not /media)
+    """
     suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
     tmp_in = tempfile.mktemp(suffix=suffix)
     job_id = f"up_{uuid.uuid4().hex[:8]}"
+
+    # Save uploaded file to temp
     with open(tmp_in, "wb") as f:
         while True:
             chunk = await file.read(1024 * 1024)
             if not chunk:
                 break
             f.write(chunk)
-    segs = (
-        segment_copy_only(tmp_in, seg_seconds=segment_seconds, job_id=job_id)
+
+    # Segment locally (temp dir)
+    seg_paths = (
+        segment_copy_only_local(tmp_in, seg_seconds=segment_seconds, job_id=job_id)
         if fast else
-        transcode_and_segment(tmp_in, seg_seconds=segment_seconds, job_id=job_id)
+        transcode_and_segment_local(tmp_in, seg_seconds=segment_seconds, job_id=job_id)
     )
-    return {"job_id": job_id, "segments": segs}
+
+    # Upload each segment to Supabase
+    signed_urls: List[str] = []
+    for p in seg_paths:
+        object_key = f"jobs/{job_id}/{p.name}"
+        info = supabase_put_file(str(p), object_key)
+        signed_urls.append(info["signed_url"])
+
+    # Cleanup temp files (best-effort)
+    try:
+        Path(tmp_in).unlink(missing_ok=True)
+        for p in seg_paths:
+            p.unlink(missing_ok=True)
+        # remove empty parent directory if any
+        if seg_paths:
+            seg_paths[0].parent.rmdir()
+    except Exception:
+        pass
+
+    return {"job_id": job_id, "segments": signed_urls}
 
 class AnalyzeReq(BaseModel):
     segment_urls: List[str]
@@ -212,7 +298,7 @@ async function poll() {{
         if (latest.seg !== lastSeg) {{
           lastSeg = latest.seg;
           vid.src = latest.url;
-          try {{ await vid.play(); }} catch (e) {{ /* autoplay may be blocked; user can click play */ }}
+          try {{ await vid.play(); }} catch (e) {{}}
         }}
       }}
     }}
