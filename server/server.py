@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from fastapi import Form
+
 
 # --- .env support (optional)
 try:
@@ -318,6 +320,158 @@ function forcePoll() {{ lastCount = -1; poll(); }}
 setInterval(poll, 1000);
 poll();
 </script>
+""")
+@app.get("/easy")
+def easy():
+    # Simple HTML page that runs the full pipeline from the browser
+    return HTMLResponse(f"""
+<!doctype html><meta charset="utf-8"/><title>ScoutIQO – Easy Runner</title>
+<style>
+  body{{font-family:system-ui;background:#0b1320;color:#e9eef6;display:grid;place-items:center;min-height:100vh;margin:0}}
+  .card{{width:min(860px,90vw);background:#101a2d;padding:24px;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.35)}}
+  h1{{margin:.2rem 0 1rem;font-size:1.4rem}}
+  label{{display:block;margin:.7rem 0 .25rem;color:#a9b3c7}}
+  input,select{{width:100%;padding:.6rem .75rem;border-radius:10px;border:1px solid #1e2a44;background:#0c1426;color:#e9eef6}}
+  .row{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+  button{{margin-top:16px;background:#00c2a8;border:0;color:#04121b;
+          padding:.7rem 1rem;border-radius:999px;font-weight:700;cursor:pointer}}
+  .hint{{font-size:.9rem;color:#8fa0b8;margin-top:8px}}
+  .ok{{display:inline-block;padding:4px 10px;border-radius:999px;background:#123e34;color:#66f0d5;margin-left:8px}}
+</style>
+<div class="card">
+  <h1>ScoutIQO – Easy Runner <span class="ok">BASE: {PUBLIC_BASE_URL}</span></h1>
+  <form action="/easy" method="post" enctype="multipart/form-data">
+    <label>Video file (.mp4)</label>
+    <input type="file" name="file" accept="video/mp4" required>
+
+    <div class="row">
+      <div>
+        <label>Segment seconds</label>
+        <input type="number" name="segment_seconds" value="12" min="4" max="60" />
+      </div>
+      <div>
+        <label>How many segments to analyze</label>
+        <input type="number" name="limit_segments" value="3" min="1" max="20" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Preset</label>
+        <select name="preset">
+          <option value="fast" selected>fast</option>
+          <option value="normal">normal</option>
+        </select>
+      </div>
+      <div>
+        <label>Workers</label>
+        <input type="number" name="workers" value="2" min="1" max="8" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Simulate</label>
+        <select name="simulate">
+          <option value="true" selected>true (quick smoke test)</option>
+          <option value="false">false (real run)</option>
+        </select>
+      </div>
+      <div>
+        <label>Fast segmentation</label>
+        <select name="fast">
+          <option value="1" selected>copy-only (fast)</option>
+          <option value="0">transcode (safer)</option>
+        </select>
+      </div>
+    </div>
+
+    <button type="submit">Run analysis</button>
+    <div class="hint">This page: uploads → segments → uploads to Supabase → launches RunPod → redirects to monitor.</div>
+  </form>
+</div>
+""")
+
+@app.post("/easy")
+async def easy_run(
+    file: UploadFile = File(...),
+    segment_seconds: int = Form(12),
+    fast: int = Form(1),
+    limit_segments: int = Form(3),
+    preset: str = Form("fast"),
+    workers: int = Form(2),
+    simulate: str = Form("true"),
+):
+    if not RUNPOD_ENDPOINT:
+        raise HTTPException(500, "RUNPOD_ENDPOINT not set")
+
+    # 1) Save upload to temp
+    suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
+    tmp_in = tempfile.mktemp(suffix=suffix)
+    with open(tmp_in, "wb") as f:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+
+    # 2) Segment locally
+    job_up = f"up_{uuid.uuid4().hex[:8]}"
+    seg_paths = (
+        segment_copy_only_local(tmp_in, seg_seconds=segment_seconds, job_id=job_up)
+        if fast else
+        transcode_and_segment_local(tmp_in, seg_seconds=segment_seconds, job_id=job_up)
+    )
+
+    # 3) Upload segments to Supabase
+    signed_urls: List[str] = []
+    for p in seg_paths:
+        object_key = f"jobs/{job_up}/{p.name}"
+        info = supabase_put_file(str(p), object_key)
+        signed_urls.append(info["signed_url"])
+
+    # limit segments for quick test
+    signed_urls = signed_urls[: max(1, min(limit_segments, len(signed_urls)))]
+
+    # cleanup local temps
+    try:
+        Path(tmp_in).unlink(missing_ok=True)
+        for p in seg_paths:
+            p.unlink(missing_ok=True)
+        if seg_paths:
+            seg_paths[0].parent.rmdir()
+    except Exception:
+        pass
+
+    # 4) Launch RunPod (with simulate toggle support)
+    job_id = str(uuid.uuid4())[:8]
+    payload = {
+        "job_id": job_id,
+        "segment_urls": signed_urls,
+        "callback_url": f"{PUBLIC_BASE_URL}/progress/{job_id}",
+        "preset": preset or "fast",
+        "workers": int(workers or 2),
+        "make_overlay": True,
+        "simulate": (str(simulate).lower() == "true"),
+    }
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_API_KEY}"}
+    r = requests.post(RUNPOD_ENDPOINT, headers=headers, json={"input": payload}, timeout=60)
+    if r.status_code >= 300:
+        raise HTTPException(500, f"RunPod launch failed: {r.text}")
+
+    # 5) Redirect to monitor
+    return HTMLResponse(f"""
+<!doctype html><meta charset="utf-8"/><title>Launched {job_id}</title>
+<body style="font-family:system-ui;background:#0b1320;color:#e9eef6">
+  <div style="display:grid;place-items:center;min-height:100vh">
+    <div style="background:#101a2d;padding:22px 28px;border-radius:14px">
+      <h2 style="margin:0 0 10px">Launched job <code>{job_id}</code></h2>
+      <p>Segments: {len(signed_urls)} | simulate: {str(simulate).lower()}</p>
+      <p><a style="color:#66f0d5" href="/monitor/{job_id}">Open monitor</a></p>
+      <script>setTimeout(()=>location.href="/monitor/{job_id}",600);</script>
+    </div>
+  </div>
+</body>
 """)
 
 @app.websocket("/ws/{job_id}")
