@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import requests
-from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -26,6 +26,9 @@ RUNPOD_API_KEY  = os.getenv("RUNPOD_API_KEY", "").strip()
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "scoutiqo")
+
+# Shared secret to protect the progress callback
+CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "")
 
 app = FastAPI(title="ScoutIQO Analyzer", docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json")
 app.add_middleware(
@@ -226,9 +229,13 @@ def analyze(req: AnalyzeReq):
         raise HTTPException(500, f"RunPod launch failed: {r.text}")
     return {"job_id": job_id}
 
-# --- progress capture ---
+# --- progress capture (protected by shared secret) ---
 @app.post("/progress/{job_id}")
-async def progress(job_id: str, req: Request):
+async def progress(job_id: str, req: Request, x_callback_token: str | None = Header(None)):
+    # Require secret header from RunPod
+    if not CALLBACK_SECRET or x_callback_token != CALLBACK_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     data = await req.json()
     progress_store.setdefault(job_id, []).append({"ts": time.time(), **data})
     logging.info("PROGRESS %s: %s", job_id, data)
