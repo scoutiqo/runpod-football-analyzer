@@ -1,7 +1,7 @@
 # handler.py (COMBINED, upgraded)
-# - Mode A (Realtime): accepts segment_urls + callback_url, posts live progress,
-#   merges tracks across segments with time offsets, uploads tracks.json to Supabase,
-#   and includes tracks_url in the final "done" event.
+# - Mode A (Realtime): accepts segment_urls + callback_url, posts live progress
+#   (with auth header), merges tracks across segments with time offsets, uploads
+#   tracks.json to Supabase, and includes tracks_url in the final "done" event.
 # - Mode B (Existing): accepts video_url + player_id, runs your pipeline, uploads to Supabase.
 
 import os, json, uuid, tempfile, time, traceback
@@ -15,12 +15,19 @@ from pipeline import run_pipeline  # your existing pipeline
 SUPABASE_URL    = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_ROLE    = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ANALYSES_BUCKET = os.getenv("ANALYSES_BUCKET", "analyses")
+CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "")  # <-- IMPORTANT: matches your FastAPI server
 
 # ---------------- helpers ----------------
 def post_cb(url, payload):
-    """POST JSON to your FastAPI /progress/{job_id} callback."""
+    """POST JSON to your FastAPI /progress/{job_id} callback WITH auth header."""
     try:
-        requests.post(url, json=payload, timeout=30)
+        headers = {
+            "Content-Type": "application/json",
+            "X-Callback-Token": CALLBACK_SECRET  # <-- REQUIRED by your /progress route
+        }
+        r = requests.post(url, headers=headers, json=payload, timeout=30)
+        if not r.ok:
+            print(f"callback post failed {r.status_code}: {r.text[:400]}", flush=True)
     except Exception as e:
         print("callback failed:", e, flush=True)
 
