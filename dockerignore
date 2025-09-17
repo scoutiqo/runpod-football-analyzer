@@ -1,0 +1,13 @@
+.git
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.patch
+
+node_modules/
+data/
+*.mp4
+tracks.json
+tracks_norm.json
+metrics.json
