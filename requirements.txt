@@ -19,3 +19,4 @@ uvicorn[standard]
 python-multipart
 python-dotenv
 supabase==2.6.0
+mediapipe==0.10.0
