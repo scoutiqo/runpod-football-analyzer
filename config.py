@@ -1,9 +1,18 @@
-# config.py
+# config.py (top of file)
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())  # auto-load .env from workspace root
+
 import os, requests
 
-SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
-SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+if not SUPABASE_URL:
+    raise RuntimeError("Missing SUPABASE_URL. Add it to .env or export it.")
+SUPABASE_URL = SUPABASE_URL.rstrip("/")
 
+SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+if not SERVICE_ROLE:
+    raise RuntimeError("Missing SUPABASE_SERVICE_ROLE_KEY. Add it to .env or export it.")
+    
 def fetch_config(config_id="default"):
     url = f"{SUPABASE_URL}/rest/v1/pipeline_config?id=eq.{config_id}&select=config"
     h = {"Authorization": f"Bearer {SERVICE_ROLE}", "apikey": SERVICE_ROLE}

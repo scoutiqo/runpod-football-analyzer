@@ -1,4 +1,3 @@
-# smooth.py
 from collections import defaultdict
 import numpy as np
 from scipy.signal import savgol_filter
@@ -43,46 +42,44 @@ def _valid_time_and_xy(t, x, y):
 
     # mask finite
     m = np.isfinite(t) & np.isfinite(x) & np.isfinite(y)
-
-    t2 = t[m]
-    x2 = x[m]
-    y2 = y[m]
+    t2, x2, y2 = t[m], x[m], y[m]
     idx = np.nonzero(m)[0]
 
     if t2.size == 0:
         return t2, x2, y2, idx
 
-    # ensure strictly increasing time: keep first of duplicates
-    # (np.diff==0 means duplicates)
+    # keep first of duplicated timestamps
     keep = np.ones_like(t2, dtype=bool)
     if t2.size > 1:
         keep[1:] = np.diff(t2) != 0.0
-    t3 = t2[keep]
-    x3 = x2[keep]
-    y3 = y2[keep]
-    idx2 = idx[keep]
 
-    return t3, x3, y3, idx2
+    return t2[keep], x2[keep], y2[keep], idx[keep]
 
-def _safe_speed(t, xs, ys):
+def _safe_speed(t, xs, ys, max_speed_cap=None):
     """
-    Compute speed with guards. Returns (speed, dt) aligned with xs/ys.
+    Speed via first differences. Robust to duplicated/irregular timestamps.
+    Returns (speed, dt) aligned to positions by padding the first sample.
     """
     t = np.asarray(t, dtype=float)
     xs = np.asarray(xs, dtype=float)
     ys = np.asarray(ys, dtype=float)
-
-    # Need at least 2 points to define a gradient.
     if t.size < 2 or xs.size < 2 or ys.size < 2:
-        return np.zeros_like(xs), np.zeros_like(xs)
+        z = np.zeros_like(xs)
+        return z, z
 
-    dt = np.gradient(t)
-    # Guard against zeros/negatives due to weird timestamps
-    dt = np.where(np.abs(dt) < 1e-6, 1e-6, dt)
+    dt = np.diff(t)
+    dt = np.where(dt < 1e-6, 1e-6, dt)  # clamp tiny/neg intervals
 
-    vx = np.gradient(xs) / dt
-    vy = np.gradient(ys) / dt
-    sp = np.sqrt(vx * vx + vy * vy)
+    vx = np.diff(xs) / dt
+    vy = np.diff(ys) / dt
+    sp = np.hypot(vx, vy)
+
+    # pad to align with position length
+    sp = np.pad(sp, (1, 0), mode='edge')
+    dt = np.pad(dt, (1, 0), mode='edge')
+
+    if max_speed_cap is not None:
+        sp = np.clip(sp, 0.0, max_speed_cap)
     return sp, dt
 
 def smooth_and_speed(tracks, have_metric=False):
@@ -91,6 +88,7 @@ def smooth_and_speed(tracks, have_metric=False):
       - t, type, id?, x_m,y_m or x_px,y_px
     Output: list with smoothed positions + speed:
       - speed_ms (if metric) else speed_pxps
+    Keeps only valid (finite, non-duplicate time) samples.
     """
     by_key = defaultdict(list)
     for r in tracks:
@@ -105,55 +103,51 @@ def smooth_and_speed(tracks, have_metric=False):
         if have_metric and ('x_m' in arr[0] and 'y_m' in arr[0]):
             x_raw = [a.get('x_m', np.nan) for a in arr]
             y_raw = [a.get('y_m', np.nan) for a in arr]
+            speed_key = 'speed_ms'
+            cap = 10.5  # ~ elite sprint m/s
         else:
             x_raw = [a.get('x_px', np.nan) for a in arr]
             y_raw = [a.get('y_px', np.nan) for a in arr]
+            speed_key = 'speed_pxps'
+            cap = None  # unknown pixel scale → no cap
 
         # Filter invalid/duplicate timestamps
         t, x, y, kept_idx = _valid_time_and_xy(t_raw, x_raw, y_raw)
 
-        # Not enough valid samples → pass-through for those kept points
-        if t.size < 2 or x.size < 2 or y.size < 2:
-            for j, i in enumerate(kept_idx):
-                a = dict(arr[i])
-                if have_metric and ('x_m' in a and 'y_m' in a):
-                    a['x_m'] = float(x[j]); a['y_m'] = float(y[j])
-                    a['speed_ms'] = 0.0
-                else:
-                    a['x_px'] = float(x[j]); a['y_px'] = float(y[j])
-                    a['speed_pxps'] = 0.0
-                a['note'] = 'skipped smoothing: too few points'
-                out.append(a)
-            # if nothing valid at all, just keep originals with speed 0
+        # Not enough valid samples → pass-through
+        if t.size < 2:
             if t.size == 0:
                 for a in arr:
                     a2 = dict(a)
-                    if have_metric and ('x_m' in a2 and 'y_m' in a2):
-                        a2['speed_ms'] = 0.0
-                    else:
-                        a2['speed_pxps'] = 0.0
+                    a2[speed_key] = 0.0
                     a2['note'] = 'no valid samples'
                     out.append(a2)
+            else:
+                for j, i in enumerate(kept_idx):
+                    a = dict(arr[i])
+                    if speed_key == 'speed_ms':
+                        a['x_m'] = float(x[j]); a['y_m'] = float(y[j])
+                    else:
+                        a['x_px'] = float(x[j]); a['y_px'] = float(y[j])
+                    a[speed_key] = 0.0
+                    a['note'] = 'skipped smoothing: too few points'
+                    out.append(a)
             continue
 
-        # Smooth only the valid subset
+        # Smooth valid subset
         xs = _savgol(x)
         ys = _savgol(y)
 
-        sp, _ = _safe_speed(t, xs, ys)
+        sp, _ = _safe_speed(t, xs, ys, max_speed_cap=cap)
 
         # Write back into kept indices
         for j, i in enumerate(kept_idx):
             a = dict(arr[i])
-            if have_metric and ('x_m' in a and 'y_m' in a):
+            if speed_key == 'speed_ms':
                 a['x_m'] = float(xs[j]); a['y_m'] = float(ys[j])
-                a['speed_ms'] = float(sp[j])
             else:
                 a['x_px'] = float(xs[j]); a['y_px'] = float(ys[j])
-                a['speed_pxps'] = float(sp[j])
+            a[speed_key] = float(sp[j])
             out.append(a)
-
-        # Optionally, you could propagate zeros for dropped (invalid) indices,
-        # but usually it's better to leave them out.
 
     return sorted(out, key=lambda z: z.get('t', 0.0))

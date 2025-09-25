@@ -1,0 +1,49 @@
+{
+  "pitch": {
+    "length_m": 105,
+    "width_m": 68
+  },
+  "tracks": [
+    {
+      "t": 0.04,
+      "type": "player",
+      "id": 1,
+      "x_px": 400,
+      "y_px": 300,
+      "x_m": 63.1732997276312,
+      "y_m": 61.287629578438164,
+      "speed_ms": 10.5
+    },
+    {
+      "t": 0.08,
+      "type": "player",
+      "id": 1,
+      "x_px": 405,
+      "y_px": 305,
+      "x_m": 64.01501281581838,
+      "y_m": 63.050018308311984,
+      "speed_ms": 10.5
+    },
+    {
+      "t": 0.12,
+      "type": "player",
+      "id": 2,
+      "x_px": 600,
+      "y_px": 350,
+      "x_m": 97.945291818984,
+      "y_m": 68,
+      "speed_ms": 0.0,
+      "note": "skipped smoothing: too few points"
+    },
+    {
+      "t": 0.16,
+      "type": "ball",
+      "x_px": 500,
+      "y_px": 320,
+      "x_m": 80.27191206248192,
+      "y_m": 68,
+      "speed_ms": 0.0,
+      "note": "skipped smoothing: too few points"
+    }
+  ]
+}
