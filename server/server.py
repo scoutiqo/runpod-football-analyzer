@@ -486,3 +486,11 @@ async def ws(job_id: str, websocket: WebSocket):
             channels[job_id].remove(websocket)
         except Exception:
             pass
+
+from server.routers import passnet as passnet_router
+
+app.include_router(passnet_router.router)
+
+from server.routers import track as track_router
+
+app.include_router(track_router.router)

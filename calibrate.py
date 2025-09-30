@@ -314,3 +314,17 @@ if __name__ == "__main__":
     ap.add_argument("--out", required=True, help="output tracks.json (meters)")
     args = ap.parse_args()
     process_segment(args.video, args.tracks_raw, args.fps, args.out)
+def image_to_field(H, x_px, y_px):
+    """Convert a single pixel (x, y) to field meters using homography H."""
+    import numpy as np
+
+    if H is None or not isinstance(H, np.ndarray) or H.shape != (3, 3):
+        raise ValueError(f"Invalid homography matrix: {H}")
+
+    # Ensure proper shape: [[x, y]]
+    pts = np.array([[float(x_px), float(y_px)]], dtype=np.float32)
+
+    if pts.shape != (1, 2):
+        raise ValueError(f"Invalid point shape: {pts.shape}, value: {pts}")
+
+    return project_px_to_m(H, pts)[0]

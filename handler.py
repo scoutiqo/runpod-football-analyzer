@@ -1,3 +1,5 @@
+﻿from server.analytics.telemetry_from_tracks import emit_frames_from_tracks
+from server.analytics.pass_from_tracks import detect_and_emit_passes
 # handler.py (Fixed with Auto-Tuning + Duration)
 import os, json, uuid, tempfile, time, traceback
 from yt_dlp import YoutubeDL
@@ -134,6 +136,11 @@ def handler(event):
     cb = inp.get("callback_url")
     # Load params for defaults
     cfg = json.load(open("params.json", "r", encoding="utf-8")) if os.path.exists("params.json") else {}
+job_vis_id = str((event.get("input") or {}).get("job_id") or event.get("id") or uuid.uuid4())[:8]
+try:
+    requests.post(f"{os.getenv('PASSNET_BASE','http://127.0.0.1:8080')}/passnet/reset/{job_vis_id}", timeout=0.5)
+except Exception:
+    pass
 
     # ---------- Mode A: realtime (segments + callback) ----------
     if segs and cb:
@@ -327,4 +334,6 @@ def handler(event):
                 pass
 
 # Start serverless handler
-runpod.serverless.start({"handler": handler})
+if __name__ == "__main__":
+    runpod.serverless.start({"handler": handler})
+
