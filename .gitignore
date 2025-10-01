@@ -27,3 +27,25 @@ Thumbs.db
 
 # Testing
 .pytest_cache/
+# outputs & local junk
+runs/
+data/
+*.mp4
+*.avi
+*.png
+*.jpg
+*.jpeg
+*.csv
+*.json.tmp
+*.log
+
+# model weights / big binaries
+*.pt
+*.onnx
+
+# venvs & editor
+.venv*/
+.venv/
+.vscode/
+.DS_Store
+Thumbs.db

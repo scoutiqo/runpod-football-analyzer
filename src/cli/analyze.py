@@ -103,7 +103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "--min_frames",   "80",
                         "--min_passes",   "1",
                         "--top_edges",    "50",
-                        "--fold_half",    "--nodes_from_passes",
+                        
                         "--out",          str(out/f"passmap_team{team}.png")], env)
         else:
             lg.info("Skipping passes/maps")
@@ -116,3 +116,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__=="__main__":
     raise SystemExit(main())
+
+
+
