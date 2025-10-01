@@ -39,122 +39,6 @@ from events import infer_possession, detect_passes
 
 
 
-class StableIdAssigner:
-    """
-    Remap volatile tracker ids to small, persistent ids 1..max_slots.
-    Keeps mapping alive for ttl frames after an object disappears.
-    """
-    def __init__(self, max_slots=30, ttl=300):
-        self.max_slots = max_slots
-        self.ttl = ttl
-        self.map = {}          # tracker_id -> (stable_id, last_frame_seen)
-        self.rev = {}          # stable_id -> tracker_id
-        self.next_free = 1
-        self.frame_idx = 0
-
-    def _alloc(self):
-        # reuse gaps if any, else increment
-        for sid in range(1, self.max_slots + 1):
-            if sid not in self.rev:
-                return sid
-        return self.max_slots  # clamp if overflow (shouldn't happen often)
-
-    def tick(self):
-        self.frame_idx += 1
-        # expire stale links
-        to_drop = []
-        for tid, (sid, lastf) in self.map.items():
-            if self.frame_idx - lastf > self.ttl:
-                to_drop.append(tid)
-        for tid in to_drop:
-            sid = self.map[tid][0]
-            self.map.pop(tid, None)
-            self.rev.pop(sid, None)
-
-    def assign_many(self, players):
-        """
-        players: list of dicts with volatile 'id' (tracker id)
-        Returns list with extra field 'sid' (stable id)
-        """
-        self.tick()
-        out = []
-        for p in players:
-            tid = p.get("id")
-            if tid is None:
-                out.append(p); continue
-            if tid in self.map:
-                sid = self.map[tid][0]
-                self.map[tid] = (sid, self.frame_idx)
-            else:
-                sid = self._alloc()
-                # if sid already taken, evict old mapping
-                if sid in self.rev:
-                    old_tid = self.rev[sid]
-                    self.map.pop(old_tid, None)
-                self.map[tid] = (sid, self.frame_idx)
-                self.rev[sid] = tid
-            p = dict(p)
-            p["sid"] = sid
-            out.append(p)
-        return out
-class StableIdAssigner:
-    """
-    Remap volatile tracker ids to small, persistent ids 1..max_slots.
-    Keeps mapping alive for ttl frames after an object disappears.
-    """
-    def __init__(self, max_slots=30, ttl=300):
-        self.max_slots = max_slots
-        self.ttl = ttl
-        self.map = {}          # tracker_id -> (stable_id, last_frame_seen)
-        self.rev = {}          # stable_id -> tracker_id
-        self.next_free = 1
-        self.frame_idx = 0
-
-    def _alloc(self):
-        # reuse gaps if any, else increment
-        for sid in range(1, self.max_slots + 1):
-            if sid not in self.rev:
-                return sid
-        return self.max_slots  # clamp if overflow (shouldn't happen often)
-
-    def tick(self):
-        self.frame_idx += 1
-        # expire stale links
-        to_drop = []
-        for tid, (sid, lastf) in self.map.items():
-            if self.frame_idx - lastf > self.ttl:
-                to_drop.append(tid)
-        for tid in to_drop:
-            sid = self.map[tid][0]
-            self.map.pop(tid, None)
-            self.rev.pop(sid, None)
-
-    def assign_many(self, players):
-        """
-        players: list of dicts with volatile 'id' (tracker id)
-        Returns list with extra field 'sid' (stable id)
-        """
-        self.tick()
-        out = []
-        for p in players:
-            tid = p.get("id")
-            if tid is None:
-                out.append(p); continue
-            if tid in self.map:
-                sid = self.map[tid][0]
-                self.map[tid] = (sid, self.frame_idx)
-            else:
-                sid = self._alloc()
-                # if sid already taken, evict old mapping
-                if sid in self.rev:
-                    old_tid = self.rev[sid]
-                    self.map.pop(old_tid, None)
-                self.map[tid] = (sid, self.frame_idx)
-                self.rev[sid] = tid
-            p = dict(p)
-            p["sid"] = sid
-            out.append(p)
-        return out
 from ball_kf import BallKF
 # ---------- Ball motion helpers (KF + optical flow + speed gate) ----------
 class BallKF:
@@ -329,15 +213,7 @@ def _aspect_roundness(w: float, h: float) -> float:
         return 0.0
     return float(min(w, h) / max(w, h))
 
-def _player_feet_points(players):
-    pts = []
-    for p in (players or []):
-        x1, y1, x2, y2 = p["x1"], p["y1"], p["x2"], p["y2"]
-        bx = (x1 + x2) * 0.5
-        by = y2  # bottom of bbox
-        pts.append((bx, by))
-    return pts
-def pick_ball_candidate(\1, players=None):
+def pick_ball_candidate(frame: np.ndarray, candidates, last_xy, W, H, players=None):
     """
     candidates: list of (x1,y1,x2,y2, conf, cls)
     last_xy: (x,y) or None
@@ -347,8 +223,8 @@ def pick_ball_candidate(\1, players=None):
     if not candidates:
         return None
 
-    min_side = 0.010 * min(W, H)
-    max_side = 0.060 * min(W, H)
+    min_side = 0.012 * min(W, H)
+    max_side = 0.080 * min(W, H)
 
     best_score, best_box = -1e9, None
     for (x1, y1, x2, y2, conf, cls_) in candidates:
@@ -366,9 +242,6 @@ def pick_ball_candidate(\1, players=None):
 
         cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
         dist = 0.0 if last_xy is None else (np.hypot(cx - last_xy[0], cy - last_xy[1]) / float(min(W, H)))
-        feet = _player_feet_points(players) if players is not None else []
-        feet_d = min([np.hypot(cx-fx, cy-fy) for (fx,fy) in feet] + [1e9])
-        foot_prox = 1.0 / (1.0 + feet_d / max(1.0, 0.12*min(W, H)))
 
         # Proximity to nearest player (closer => higher score); normalized to ~0..1
         if players:
@@ -383,7 +256,7 @@ def pick_ball_candidate(\1, players=None):
             + 1.5 * roundness
             + (0.6 if side_ok else 0.0)
             + 0.4 * float(cls_ == 32)
-            + 0.4 * conf - 0.5 * dist + 1.0 * foot_prox - 0.3 * (abs(cx - pred_xy[0]) + abs(cy - pred_xy[1]))
+            + 0.4 * conf - 0.5 * dist - 0.3 * (abs(cx - pred_xy[0]) + abs(cy - pred_xy[1]))
             + 0.8 * prox
         )
         if score > best_score:
@@ -450,8 +323,7 @@ def run_pipeline(video_path: str, cfg: dict | None = None, max_frames=150, frame
     detector = MultiDetector(player_weights="weights/players_soccer.pt", ball_weights="weights/ball_soccer.pt")
     player_tracker = PlayerTrackerDS(tracking_cfg)
     ball_tracker = BallTracker(ball_cfg)
-    
-    stable_ids = StableIdAssigner(max_slots=30, ttl=300)
+    tass = TeamAssigner()
 
 # ---------- Compact display ids per team (stable labels) ----------
 _display_map = {"home": {}, "away": {}}
@@ -565,7 +437,6 @@ def _label_for(track_id, team):
 
             # Track
             players = player_tracker.update(player_dets)
-            players = stable_ids.assign_many(players or [])
             ball = ball_tracker.update(ball_dets)
 
             # Normalize ball (list/dict/empty) and provide fallback box
@@ -613,7 +484,7 @@ def _label_for(track_id, team):
                     tass.observe(
                         frame,
                         [
-                            {"id": p.get("sid", p.get("id")), "x1": p["x1"], "y1": p["y1"], "x2": p["x2"], "y2": p["y2"]}
+                            {"id": p["id"], "x1": p["x1"], "y1": p["y1"], "x2": p["x2"], "y2": p["y2"]}
                             for p in players
                         ],
                     )# Players -> points (with (optional) skeletal)
@@ -624,7 +495,7 @@ def _label_for(track_id, team):
                 rec = {
                     "t": round(t, 3),
                     "type": "player",
-                    "id": p.get("sid", p.get("id")),
+                    "id": p["id"],
                     "team": tass.get_team(p["id"]),
                     "x_px": float(cx),
                     "y_px": float(cy),
@@ -756,11 +627,6 @@ if __name__ == "__main__":
     except Exception as e:
         log.exception("Pipeline crashed: %s", e)
         raise
-
-
-
-
-
 
 
 
