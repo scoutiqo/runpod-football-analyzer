@@ -1,4 +1,4 @@
-# server/server.py
+﻿# server/server.py
 import os, uuid, json, tempfile, subprocess, time, logging
 from pathlib import Path
 from typing import Dict, List
@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from fastapi import Form
+import asyncio
 from fastapi import Form
 
 
@@ -158,7 +160,7 @@ def health():
     return {"ok": True}
 
 @app.post("/upload")
-async def upload(file: UploadFile = File(...), segment_seconds: int = 20, fast: int = 1):
+async def upload(file: UploadFile = File(...), segment_seconds: int = 20, fast: int = 0):
     """
     Step 2 version:
       1) save upload to a temp file
@@ -203,35 +205,42 @@ async def upload(file: UploadFile = File(...), segment_seconds: int = 20, fast: 
     except Exception:
         pass
 
-    return {"job_id": job_id, "segments": signed_urls}
+    return {"job_id": job_id, "segments": signed_urls, "segment_urls": signed_urls}
 
 class AnalyzeReq(BaseModel):
-    segment_urls: List[str]
+    segment_urls: List[str] | None = None
     preset: str | None = "fast"
     workers: int | None = 4
 
 @app.post("/analyze")
-def analyze(req: AnalyzeReq):
+def analyze(req: Request):
     if not RUNPOD_ENDPOINT:
         raise HTTPException(500, "RUNPOD_ENDPOINT not set")
+
+    # accept either "segment_urls" or legacy "segments"
+    try:
+        body = asyncio.get_event_loop().run_until_complete(req.json())
+    except Exception:
+        body = {}
+
+    segs = body.get("segment_urls") or body.get("segments")
+    if not segs or not isinstance(segs, list):
+        raise HTTPException(400, "segment_urls (or segments) must be a non-empty list")
+
     job_id = str(uuid.uuid4())[:8]
-    if not req.segment_urls:
-        raise HTTPException(400, "segment_urls required")
     payload = {
         "job_id": job_id,
-        "segment_urls": req.segment_urls,
+        "segment_urls": segs,
         "callback_url": f"{PUBLIC_BASE_URL}/progress/{job_id}",
-        "preset": req.preset or "fast",
-        "workers": int(req.workers or 4),
+        "preset": (body.get("preset") or "fast"),
+        "workers": int(body.get("workers") or 4),
         "make_overlay": True,
     }
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_API_KEY}"}
     r = requests.post(RUNPOD_ENDPOINT, headers=headers, json={"input": payload}, timeout=60)
     if r.status_code >= 300:
         raise HTTPException(500, f"RunPod launch failed: {r.text}")
-    return {"job_id": job_id}
-
-# --- progress capture (protected by shared secret) ---
+    return {"job_id": job_id}# --- progress capture (protected by shared secret) ---
 @app.post("/progress/{job_id}")
 async def progress(job_id: str, req: Request, x_callback_token: str | None = Header(None)):
     # Require secret header from RunPod
@@ -257,7 +266,7 @@ def dump(job_id: str):
 @app.get("/monitor/{job_id}")
 def monitor(job_id: str):
     return HTMLResponse(f"""
-<!doctype html><meta charset="utf-8"/><title>Monitor – {job_id}</title>
+<!doctype html><meta charset="utf-8"/><title>Monitor â€“ {job_id}</title>
 <style>
   body{{font-family:system-ui;margin:20px}}
   .row{{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}}
@@ -265,7 +274,7 @@ def monitor(job_id: str):
   pre{{max-height:520px;overflow:auto;background:#111;color:#eee;padding:12px;border-radius:8px;min-width:420px}}
   .pill{{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef;margin-left:8px}}
 </style>
-<h1>Job <code>{job_id}</code> <span id="badge" class="pill">waiting…</span></h1>
+<h1>Job <code>{job_id}</code> <span id="badge" class="pill">waitingâ€¦</span></h1>
 <div class="row">
   <div>
     <video id="vid" controls muted playsinline></video>
@@ -292,7 +301,7 @@ let lastCount = 0;
 async function poll() {{
   try {{
     const st = await fetch(`${{base}}/status/${{job}}`).then(r => r.json());
-    badge.textContent = st.last_type ? st.last_type : "waiting…";
+    badge.textContent = st.last_type ? st.last_type : "waitingâ€¦";
 
     if ((st.events || 0) !== lastCount) {{
       lastCount = st.events || 0;
@@ -325,7 +334,7 @@ poll();
 def easy():
     # Simple HTML page that runs the full pipeline from the browser
     return HTMLResponse(f"""
-<!doctype html><meta charset="utf-8"/><title>ScoutIQO – Easy Runner</title>
+<!doctype html><meta charset="utf-8"/><title>ScoutIQO â€“ Easy Runner</title>
 <style>
   body{{font-family:system-ui;background:#0b1320;color:#e9eef6;display:grid;place-items:center;min-height:100vh;margin:0}}
   .card{{width:min(860px,90vw);background:#101a2d;padding:24px;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.35)}}
@@ -339,7 +348,7 @@ def easy():
   .ok{{display:inline-block;padding:4px 10px;border-radius:999px;background:#123e34;color:#66f0d5;margin-left:8px}}
 </style>
 <div class="card">
-  <h1>ScoutIQO – Easy Runner <span class="ok">BASE: {PUBLIC_BASE_URL}</span></h1>
+  <h1>ScoutIQO â€“ Easy Runner <span class="ok">BASE: {PUBLIC_BASE_URL}</span></h1>
   <form action="/easy" method="post" enctype="multipart/form-data">
     <label>Video file (.mp4)</label>
     <input type="file" name="file" accept="video/mp4" required>
@@ -387,7 +396,7 @@ def easy():
     </div>
 
     <button type="submit">Run analysis</button>
-    <div class="hint">This page: uploads → segments → uploads to Supabase → launches RunPod → redirects to monitor.</div>
+    <div class="hint">This page: uploads â†’ segments â†’ uploads to Supabase â†’ launches RunPod â†’ redirects to monitor.</div>
   </form>
 </div>
 """)
@@ -486,3 +495,5 @@ async def ws(job_id: str, websocket: WebSocket):
             channels[job_id].remove(websocket)
         except Exception:
             pass
+
+
