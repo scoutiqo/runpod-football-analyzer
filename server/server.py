@@ -213,13 +213,12 @@ class AnalyzeReq(BaseModel):
     workers: int | None = 4
 
 @app.post("/analyze")
-def analyze(req: Request):
+async def analyze(req: Request):
     if not RUNPOD_ENDPOINT:
         raise HTTPException(500, "RUNPOD_ENDPOINT not set")
 
-    # accept either "segment_urls" or legacy "segments"
     try:
-        body = asyncio.get_event_loop().run_until_complete(req.json())
+        body = await req.json()
     except Exception:
         body = {}
 
@@ -236,6 +235,11 @@ def analyze(req: Request):
         "workers": int(body.get("workers") or 4),
         "make_overlay": True,
     }
+
+    # debug logs
+    log.info("ANALYZE keys: %s", list(body.keys()))
+    log.info("ANALYZE segments: %s", len(segs))
+
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_API_KEY}"}
     r = requests.post(RUNPOD_ENDPOINT, headers=headers, json={"input": payload}, timeout=60)
     if r.status_code >= 300:
@@ -495,5 +499,6 @@ async def ws(job_id: str, websocket: WebSocket):
             channels[job_id].remove(websocket)
         except Exception:
             pass
+
 
 
