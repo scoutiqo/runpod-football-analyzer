@@ -36,3 +36,4 @@ output/
 dist/
 build/
 node_modules/
+yolov8n.pt
