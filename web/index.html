@@ -1,0 +1,28 @@
+﻿<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>ScoutIQO – Local UI</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px}label{display:block;margin:12px 0 6px}input,button{font-size:16px;padding:8px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}</style>
+</head>
+<body>
+  <h1>ScoutIQO – Local UI</h1>
+  <div>
+    <label>Local video path:</label>
+    <input id="src" style="min-width:420px" placeholder="C:\\Users\\You\\video.mp4">
+  </div>
+  <div class="row">
+    <button onclick="go('/live')">Open /live</button>
+    <button onclick="go('/live_pro')">Open /live_pro</button>
+  </div>
+  <script>
+    const host = location.origin;
+    function go(endpoint){
+      const s = document.getElementById('src').value;
+      if(!s) return alert('Set a local path first');
+      const q = new URLSearchParams({src:s, resize_w:1280, skip:1});
+      if(endpoint==='/live_pro'){ q.set('conf_min', 0.55); q.set('min_overlap', 0.6); }
+      window.open(`${host}${endpoint}?${q.toString()}`,"_blank");
+    }
+  </script>
+</body>
+</html>

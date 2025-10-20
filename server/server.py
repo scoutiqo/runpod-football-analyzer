@@ -1,284 +1,25 @@
-﻿# server/server.py
-import os, uuid, json, tempfile, subprocess, time, logging
-from pathlib import Path
-from typing import Dict, List
-
-import requests
-from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException, Request, Header
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-from fastapi import Form
-import asyncio
-from fastapi import Form
+﻿from fastapi import FastAPI
+app = FastAPI()
 
 
-# --- .env support (optional)
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
 
-# -------- Config --------
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
-RUNPOD_ENDPOINT = os.getenv("RUNPOD_ENDPOINT", "").strip()  # e.g. https://api.runpod.ai/v2/<endpoint-id>/run
-RUNPOD_API_KEY  = os.getenv("RUNPOD_API_KEY", "").strip()
-
-# Supabase (server-side only, required by /upload in Step 2+)
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "scoutiqo")
-
-# Shared secret to protect the progress callback
-CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "")
-
-app = FastAPI(title="ScoutIQO Analyzer", docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json")
-app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
-)
-
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("uvicorn")
-
-# -------- static media root (kept for compatibility; /upload no longer uses this) --------
-MEDIA_ROOT = Path("data")
-MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
-app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
-
-# -------- simple WS pub/sub --------
-channels: Dict[str, List[WebSocket]] = {}
-async def publish(job_id: str, event: dict):
-    for ws in list(channels.get(job_id, [])):
-        try:
-            await ws.send_text(json.dumps(event))
-        except Exception:
-            try:
-                channels[job_id].remove(ws)
-            except Exception:
-                pass
-
-# -------- in-memory progress store --------
-progress_store: Dict[str, List[dict]] = {}
-
-# -------- ffmpeg helpers --------
-def _run_ffmpeg(cmd: list):
-    log.info("FFmpeg: %s", " ".join(str(c) for c in cmd))
-    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    if p.returncode != 0:
-        out = p.stdout.decode(errors="ignore")
-        log.error("FFmpeg failed:\n%s", out[:2000])
-        raise RuntimeError(out)
-
-def transcode_and_segment_local(local_input: str, seg_seconds: int, job_id: str) -> list[Path]:
-    """
-    Normalize video then segment into a temporary directory.
-    Returns a list of local Path objects to seg_XXX.mp4
-    """
-    tmp_norm = tempfile.mktemp(suffix=".mp4")
-    _run_ffmpeg([
-        "ffmpeg","-y","-hwaccel","auto","-i", local_input,
-        "-vf","scale='min(1280,iw)':-2,fps=25",
-        "-c:v","h264","-preset","veryfast","-crf","20",
-        "-g","50","-keyint_min","50","-sc_threshold","0",
-        "-c:a","aac","-ac","1","-ar","32000","-b:a","64k",
-        tmp_norm
-    ])
-    out_dir = Path(tempfile.mkdtemp()) / job_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    _run_ffmpeg([
-        "ffmpeg","-y","-i", tmp_norm, "-reset_timestamps","1","-map","0","-c","copy",
-        "-segment_time", str(seg_seconds), "-f","segment", str(out_dir / "seg_%03d.mp4")
-    ])
-    return sorted(out_dir.glob("seg_*.mp4"))
-
-def segment_copy_only_local(local_input: str, seg_seconds: int, job_id: str) -> list[Path]:
-    """
-    Copy-only segmentation into a temporary directory.
-    Returns a list of local Path objects to seg_XXX.mp4
-    """
-    out_dir = Path(tempfile.mkdtemp()) / job_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    _run_ffmpeg([
-        "ffmpeg","-y","-i", local_input, "-reset_timestamps","1","-map","0","-c","copy",
-        "-segment_time", str(seg_seconds), "-f","segment", str(out_dir / "seg_%03d.mp4")
-    ])
-    return sorted(out_dir.glob("seg_*.mp4"))
-
-# -------- Supabase storage client --------
-def _guess_ct(path: str) -> str:
-    import mimetypes
-    return mimetypes.guess_type(path)[0] or "application/octet-stream"
-
-def _sb_headers() -> dict:
-    return {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-    }
-
-def _sb_base() -> str:
-    return f"{SUPABASE_URL}/storage/v1"
-
-def supabase_put_file(local_path: str, object_key: str) -> dict:
-    """
-    Upload local file to Supabase bucket at object_key.
-    Returns: {"bucket": str, "key": str, "signed_url": str, "public_url": str}
-    """
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        raise HTTPException(500, "Supabase env not set (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)")
-    p = Path(local_path)
-    if not p.exists():
-        raise FileNotFoundError(local_path)
-    url = f"{_sb_base()}/object/{SUPABASE_BUCKET}/{object_key}"
-    with open(p, "rb") as f:
-        r = requests.post(url, headers={**_sb_headers(), "Content-Type": _guess_ct(str(p))}, data=f)
-    if r.status_code >= 300:
-        raise HTTPException(500, f"Supabase upload failed {r.status_code}: {r.text[:400]}")
-    # signed url (24h)
-    signed = supabase_sign_url(object_key, expires_in=24*3600)
-    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{object_key}"
-    return {"bucket": SUPABASE_BUCKET, "key": object_key, "signed_url": signed, "public_url": public_url}
-
-def supabase_sign_url(object_key: str, expires_in: int = 3600) -> str:
-    url = f"{_sb_base()}/object/sign/{SUPABASE_BUCKET}/{object_key}"
-    r = requests.post(url, headers=_sb_headers(), json={"expiresIn": expires_in})
-    if r.status_code >= 300:
-        raise HTTPException(500, f"Supabase sign failed {r.status_code}: {r.text[:400]}")
-    signed_path = (r.json().get("signedURL") or r.json().get("signedUrl"))
-    if not signed_path:
-        raise HTTPException(500, f"Supabase sign response missing signedURL: {r.text[:400]}")
-    return f"{SUPABASE_URL}/storage/v1{signed_path}"
-
-# -------- API --------
-@app.get("/")
-def root():
-    return {"ok": True, "health": "/health", "docs": "/docs", "monitor": "/monitor/<job_id>"}
-
-@app.get("/health")
-def health():
-    return {"ok": True}
-
-@app.post("/upload")
-async def upload(file: UploadFile = File(...), segment_seconds: int = 20, fast: int = 0):
-    """
-    Step 2 version:
-      1) save upload to a temp file
-      2) segment locally into temp dir
-      3) upload each seg to Supabase Storage
-      4) return SIGNED URLs (not /media)
-    """
-    suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
-    tmp_in = tempfile.mktemp(suffix=suffix)
-    job_id = f"up_{uuid.uuid4().hex[:8]}"
-
-    # Save uploaded file to temp
-    with open(tmp_in, "wb") as f:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
-
-    # Segment locally (temp dir)
-    seg_paths = (
-        segment_copy_only_local(tmp_in, seg_seconds=segment_seconds, job_id=job_id)
-        if fast else
-        transcode_and_segment_local(tmp_in, seg_seconds=segment_seconds, job_id=job_id)
-    )
-
-    # Upload each segment to Supabase
-    signed_urls: List[str] = []
-    for p in seg_paths:
-        object_key = f"jobs/{job_id}/{p.name}"
-        info = supabase_put_file(str(p), object_key)
-        signed_urls.append(info["signed_url"])
-
-    # Cleanup temp files (best-effort)
-    try:
-        Path(tmp_in).unlink(missing_ok=True)
-        for p in seg_paths:
-            p.unlink(missing_ok=True)
-        # remove empty parent directory if any
-        if seg_paths:
-            seg_paths[0].parent.rmdir()
-    except Exception:
-        pass
-
-    return {"job_id": job_id, "segments": signed_urls, "segment_urls": signed_urls}
-
-class AnalyzeReq(BaseModel):
-    segment_urls: List[str] | None = None
-    preset: str | None = "fast"
-    workers: int | None = 4
-
-@app.post("/analyze")
-async def analyze(req: Request):
-    if not RUNPOD_ENDPOINT:
-        raise HTTPException(500, "RUNPOD_ENDPOINT not set")
-
-    try:
-        body = await req.json()
-    except Exception:
-        body = {}
-
-    segs = body.get("segment_urls") or body.get("segments")
-    if not segs or not isinstance(segs, list):
-        raise HTTPException(400, "segment_urls (or segments) must be a non-empty list")
-
-    job_id = str(uuid.uuid4())[:8]
-    payload = {
-        "job_id": job_id,
-        "segment_urls": segs,
-        "callback_url": f"{PUBLIC_BASE_URL}/progress/{job_id}",
-        "preset": (body.get("preset") or "fast"),
-        "workers": int(body.get("workers") or 4),
-        "make_overlay": True,
-    }
-
-    # debug logs
-    log.info("ANALYZE keys: %s", list(body.keys()))
-    log.info("ANALYZE segments: %s", len(segs))
-
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_API_KEY}"}
-    r = requests.post(RUNPOD_ENDPOINT, headers=headers, json={"input": payload}, timeout=60)
-    if r.status_code >= 300:
-        raise HTTPException(500, f"RunPod launch failed: {r.text}")
-    return {"job_id": job_id}# --- progress capture (protected by shared secret) ---
-@app.post("/progress/{job_id}")
-async def progress(job_id: str, req: Request, x_callback_token: str | None = Header(None)):
-    # Require secret header from RunPod
-    if not CALLBACK_SECRET or x_callback_token != CALLBACK_SECRET:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    data = await req.json()
-    progress_store.setdefault(job_id, []).append({"ts": time.time(), **data})
-    logging.info("PROGRESS %s: %s", job_id, data)
-    await publish(job_id, data)
-    return {"ok": True}
-
-@app.get("/status/{job_id}")
-def status(job_id: str):
-    evts = progress_store.get(job_id, [])
-    return {"job_id": job_id, "events": len(evts), "last_type": (evts[-1]["type"] if evts else None)}
-
-@app.get("/progress/{job_id}/dump")
-def dump(job_id: str):
-    return {"job_id": job_id, "events": progress_store.get(job_id, [])}
-
-# --- minimal monitor page ---
-@app.get("/monitor/{job_id}")
-def monitor(job_id: str):
-    return HTMLResponse(f"""
-<!doctype html><meta charset="utf-8"/><title>Monitor â€“ {job_id}</title>
+# --- monitor2 overlay viewer (safe, no decorators) ---
+def _monitor2_endpoint(job_id: str):
+    import json
+    from fastapi.responses import HTMLResponse
+    job_js = json.dumps(job_id)
+    html = r"""<!doctype html><meta charset="utf-8"/><title>Monitor</title>
 <style>
-  body{{font-family:system-ui;margin:20px}}
-  .row{{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}}
-  video{{width:640px;height:360px;background:#000;border-radius:8px}}
-  pre{{max-height:520px;overflow:auto;background:#111;color:#eee;padding:12px;border-radius:8px;min-width:420px}}
-  .pill{{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef;margin-left:8px}}
+  body{font-family:system-ui;margin:20px}
+  .row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+  video{width:640px;height:360px;background:#000;border-radius:8px}
+  pre{max-height:520px;overflow:auto;background:#111;color:#eee;padding:12px;border-radius:8px;min-width:420px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef;margin-left:8px}
+  ul#arts{margin:8px 0 0 0;padding:0;list-style:none}
+  ul#arts li{margin:4px 0}
+  ul#arts a{text-decoration:none}
 </style>
-<h1>Job <code>{job_id}</code> <span id="badge" class="pill">waitingâ€¦</span></h1>
+<h1>Job <code>__JOB_TEXT__</code> <span id="badge" class="pill">waiting…</span></h1>
 <div class="row">
   <div>
     <video id="vid" controls muted playsinline></video>
@@ -286,219 +27,974 @@ def monitor(job_id: str):
       <button onclick="forcePoll()">Refresh now</button>
       <a id="dump" target="_blank">Open full event dump</a>
     </div>
+    <div style="margin-top:12px">
+      <h3 style="margin:0 0 6px">Artifacts</h3>
+      <ul id="arts"></ul>
+    </div>
   </div>
   <pre id="log"></pre>
 </div>
 <script>
-const job  = {json.dumps(job_id)};
-const base = location.origin;
-
+const job   = __JOB_JSON__;
+const base  = location.origin;
 const logEl = document.getElementById('log');
 const vid   = document.getElementById('vid');
 const badge = document.getElementById('badge');
 const dumpA = document.getElementById('dump');
-dumpA.href  = `${{base}}/progress/${{job}}/dump`;
+const artsUl= document.getElementById('arts');
 
-let lastSeg = -1;
 let lastCount = 0;
+let lastVideoSrc = "";
 
-async function poll() {{
-  try {{
-    const st = await fetch(`${{base}}/status/${{job}}`).then(r => r.json());
-    badge.textContent = st.last_type ? st.last_type : "waitingâ€¦";
+// prefer overlay videos if present
+function pickBestVideoArtifact(arts) {
+  const vids = arts.filter(a => /\.(mp4|webm)(\?|$)/i.test(a.url));
+  if (vids.length === 0) return null;
+  vids.sort((a,b) => (b.name && b.name.includes('overlay') ? 1 : 0) - (a.name && a.name.includes('overlay') ? 1 : 0));
+  return vids.pop();
+}
 
-    if ((st.events || 0) !== lastCount) {{
+async function poll() {
+  try {
+    badge.textContent = st.last_type ? st.last_type : "waiting…";
+
+    if ((st.events || 0) !== lastCount) {
       lastCount = st.events || 0;
 
-      const dump = await fetch(`${{base}}/progress/${{job}}/dump`).then(r => r.json());
       logEl.textContent = JSON.stringify(dump, null, 2);
+      const evts = (dump && dump.events) ? dump.events : [];
 
-      const evts = dump && dump.events ? dump.events : [];
-      const latest = evts.length ? evts[evts.length - 1] : {{}};
+      const arts = [];
+      for (const e of evts) {
+        if (e.type === "artifact" && e.url) {
+          arts.push({ name: e.name || "artifact", url: e.url, seg: e.seg });
+        }
+      }
+      artsUl.innerHTML = "";
+      for (const a of arts) {
+        const li = document.createElement('li');
+        const segText = (a.seg != null ? ('seg ' + a.seg + ': ') : '');
+        artsUl.appendChild(li);
+      }
 
-      if (latest && latest.type === "segment_start" && typeof latest.seg === "number" && latest.url) {{
-        if (latest.seg !== lastSeg) {{
-          lastSeg = latest.seg;
+      const best = pickBestVideoArtifact(arts);
+      if (best && best.url !== lastVideoSrc) {
+        lastVideoSrc = best.url;
+        vid.src = best.url;
+        try { await vid.play(); } catch (e) {}
+      } else {
+        const latest = evts.length ? evts[evts.length - 1] : null;
+        if (latest && latest.type === "segment_start" && latest.url && latest.url !== lastVideoSrc) {
+          lastVideoSrc = latest.url;
           vid.src = latest.url;
-          try {{ await vid.play(); }} catch (e) {{}}
-        }}
-      }}
-    }}
-  }} catch (e) {{
-    badge.textContent = "error";
-  }}
-}}
-
-function forcePoll() {{ lastCount = -1; poll(); }}
-setInterval(poll, 1000);
-poll();
+          try { await vid.play(); } catch (e) {}
+        }
+      }
+    }
+  } catch (e) { badge.textContent = "error"; }
+}
+function forcePoll(){ lastCount = -1; poll(); }
+setInterval(poll, 1000); poll();
 </script>
-""")
-@app.get("/easy")
-def easy():
-    # Simple HTML page that runs the full pipeline from the browser
-    return HTMLResponse(f"""
-<!doctype html><meta charset="utf-8"/><title>ScoutIQO â€“ Easy Runner</title>
-<style>
-  body{{font-family:system-ui;background:#0b1320;color:#e9eef6;display:grid;place-items:center;min-height:100vh;margin:0}}
-  .card{{width:min(860px,90vw);background:#101a2d;padding:24px;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.35)}}
-  h1{{margin:.2rem 0 1rem;font-size:1.4rem}}
-  label{{display:block;margin:.7rem 0 .25rem;color:#a9b3c7}}
-  input,select{{width:100%;padding:.6rem .75rem;border-radius:10px;border:1px solid #1e2a44;background:#0c1426;color:#e9eef6}}
-  .row{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
-  button{{margin-top:16px;background:#00c2a8;border:0;color:#04121b;
-          padding:.7rem 1rem;border-radius:999px;font-weight:700;cursor:pointer}}
-  .hint{{font-size:.9rem;color:#8fa0b8;margin-top:8px}}
-  .ok{{display:inline-block;padding:4px 10px;border-radius:999px;background:#123e34;color:#66f0d5;margin-left:8px}}
-</style>
-<div class="card">
-  <h1>ScoutIQO â€“ Easy Runner <span class="ok">BASE: {PUBLIC_BASE_URL}</span></h1>
-  <form action="/easy" method="post" enctype="multipart/form-data">
-    <label>Video file (.mp4)</label>
-    <input type="file" name="file" accept="video/mp4" required>
+"""
+    html = html.replace("__JOB_JSON__", job_js).replace("__JOB_TEXT__", job_id)
+    return HTMLResponse(html)
 
-    <div class="row">
-      <div>
-        <label>Segment seconds</label>
-        <input type="number" name="segment_seconds" value="12" min="4" max="60" />
-      </div>
-      <div>
-        <label>How many segments to analyze</label>
-        <input type="number" name="limit_segments" value="3" min="1" max="20" />
-      </div>
-    </div>
+# Register route AFTER app exists
+try:
+    app.add_api_route("/monitor2/{job_id}", _monitor2_endpoint, methods=["GET"])
+except Exception:
+    pass
+except Exception:
+    # if app not yet defined at import time, a later import can re-run this or you can move these lines lower
+    pass
+# --- end monitor2 ---
 
-    <div class="row">
-      <div>
-        <label>Preset</label>
-        <select name="preset">
-          <option value="fast" selected>fast</option>
-          <option value="normal">normal</option>
-        </select>
-      </div>
-      <div>
-        <label>Workers</label>
-        <input type="number" name="workers" value="2" min="1" max="8" />
-      </div>
-    </div>
+# --- ensure FastAPI app exists (auto-added) ---
+try:
+    app  # noqa: F821
+except Exception:
+    pass
+except NameError:
+    from fastapi import FastAPI
+    app = FastAPI()
 
-    <div class="row">
-      <div>
-        <label>Simulate</label>
-        <select name="simulate">
-          <option value="true" selected>true (quick smoke test)</option>
-          <option value="false">false (real run)</option>
-        </select>
-      </div>
-      <div>
-        <label>Fast segmentation</label>
-        <select name="fast">
-          <option value="1" selected>copy-only (fast)</option>
-          <option value="0">transcode (safer)</option>
-        </select>
-      </div>
-    </div>
+# minimal health endpoint so we can verify the server runs
+@app.get("/health")
+def _health():
+    return {"ok": True}
+# --- end ensure ---
 
-    <button type="submit">Run analysis</button>
-    <div class="hint">This page: uploads â†’ segments â†’ uploads to Supabase â†’ launches RunPod â†’ redirects to monitor.</div>
-  </form>
-</div>
-""")
 
-@app.post("/easy")
-async def easy_run(
-    file: UploadFile = File(...),
-    segment_seconds: int = Form(12),
-    fast: int = Form(1),
-    limit_segments: int = Form(3),
-    preset: str = Form("fast"),
-    workers: int = Form(2),
-    simulate: str = Form("true"),
-):
-    if not RUNPOD_ENDPOINT:
-        raise HTTPException(500, "RUNPOD_ENDPOINT not set")
+@app.get("/_health")
+def _health():
+    import os
+    env = {k: bool(os.getenv(k)) for k in [
+        "SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","SUPABASE_BUCKET",
+        "PUBLIC_BASE_URL","CALLBACK_SECRET","FFMPEG_BIN"
+    ]}
+    return {"ok": True, "env": env}
 
-    # 1) Save upload to temp
-    suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
-    tmp_in = tempfile.mktemp(suffix=suffix)
-    with open(tmp_in, "wb") as f:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
 
-    # 2) Segment locally
-    job_up = f"up_{uuid.uuid4().hex[:8]}"
-    seg_paths = (
-        segment_copy_only_local(tmp_in, seg_seconds=segment_seconds, job_id=job_up)
-        if fast else
-        transcode_and_segment_local(tmp_in, seg_seconds=segment_seconds, job_id=job_up)
-    )
+# --- LOCAL UPLOAD + STATIC FILES (minimal) ------------------------------------
+try:
+    import os, uuid, shutil, subprocess
+    from pathlib import Path
+    from fastapi import UploadFile, File
+    from fastapi.responses import JSONResponse
+    from starlette.staticfiles import StaticFiles
+except Exception:
+    pass
 
-    # 3) Upload segments to Supabase
-    signed_urls: List[str] = []
-    for p in seg_paths:
-        object_key = f"jobs/{job_up}/{p.name}"
-        info = supabase_put_file(str(p), object_key)
-        signed_urls.append(info["signed_url"])
-
-    # limit segments for quick test
-    signed_urls = signed_urls[: max(1, min(limit_segments, len(signed_urls)))]
-
-    # cleanup local temps
+    # Serve tmp files at /files
+    TMP_ROOT = (Path(__file__).parent.parent / "tmp_www")
+    TMP_ROOT.mkdir(parents=True, exist_ok=True)
     try:
-        Path(tmp_in).unlink(missing_ok=True)
-        for p in seg_paths:
-            p.unlink(missing_ok=True)
-        if seg_paths:
-            seg_paths[0].parent.rmdir()
+        app.mount("/files", StaticFiles(directory=str(TMP_ROOT)), name="files")
     except Exception:
         pass
+    except Exception:
+        # already mounted or not available – ignore
+        pass
 
-    # 4) Launch RunPod (with simulate toggle support)
-    job_id = str(uuid.uuid4())[:8]
-    payload = {
-        "job_id": job_id,
-        "segment_urls": signed_urls,
-        "callback_url": f"{PUBLIC_BASE_URL}/progress/{job_id}",
-        "preset": preset or "fast",
-        "workers": int(workers or 2),
-        "make_overlay": True,
-        "simulate": (str(simulate).lower() == "true"),
-    }
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_API_KEY}"}
-    r = requests.post(RUNPOD_ENDPOINT, headers=headers, json={"input": payload}, timeout=60)
-    if r.status_code >= 300:
-        raise HTTPException(500, f"RunPod launch failed: {r.text}")
+    @app.post("/upload")
+    async def upload(file: UploadFile = File(...), segment_seconds: int = 12, fast: int = 1):
+        ffmpeg = os.getenv("FFMPEG_BIN", "ffmpeg")
+        base  = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8081")
 
-    # 5) Redirect to monitor
-    return HTMLResponse(f"""
-<!doctype html><meta charset="utf-8"/><title>Launched {job_id}</title>
-<body style="font-family:system-ui;background:#0b1320;color:#e9eef6">
-  <div style="display:grid;place-items:center;min-height:100vh">
-    <div style="background:#101a2d;padding:22px 28px;border-radius:14px">
-      <h2 style="margin:0 0 10px">Launched job <code>{job_id}</code></h2>
-      <p>Segments: {len(signed_urls)} | simulate: {str(simulate).lower()}</p>
-      <p><a style="color:#66f0d5" href="/monitor/{job_id}">Open monitor</a></p>
-      <script>setTimeout(()=>location.href="/monitor/{job_id}",600);</script>
+        job_id = f"up_{uuid.uuid4().hex[:8]}"
+        job_dir = TMP_ROOT / "jobs" / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+
+        # save input
+        src = job_dir / "input.mp4"
+        with src.open("wb") as f:
+            shutil.copyfileobj(file.file, f)
+
+        # segment -> seg_000.mp4, seg_001.mp4, ...
+        pattern = job_dir / "seg_%03d.mp4"
+        cmd = [
+            ffmpeg, "-y",
+            "-i", str(src),
+            "-reset_timestamps", "1",
+            "-map", "0", "-c", "copy",
+            "-segment_time", str(segment_seconds),
+            "-f", "segment", str(pattern)
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            return JSONResponse({"detail":"ffmpeg failed", "stderr":proc.stderr[-6000:]}, status_code=500)
+
+        segs = sorted(p for p in job_dir.glob("seg_*.mp4"))
+        urls = [f"{base}/files/jobs/{job_id}/{p.name}" for p in segs]
+
+        return {"job_id": job_id, "segment_urls": urls}
+except Exception as _e:
+    # keep import from crashing if anything above fails
+    pass
+# -------------------------------------------------------------------------------
+
+
+# --- LOCAL UPLOAD + STATIC FILES (minimal) ------------------------------------
+try:
+    import os, uuid, shutil, subprocess
+    from pathlib import Path
+    from fastapi import UploadFile, File
+    from fastapi.responses import JSONResponse
+    from starlette.staticfiles import StaticFiles
+except Exception:
+    pass
+
+    # Serve tmp files at /files
+    TMP_ROOT = (Path(__file__).parent.parent / "tmp_www")
+    TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    try:
+        app.mount("/files", StaticFiles(directory=str(TMP_ROOT)), name="files")
+    except Exception:
+        pass
+    except Exception:
+        # already mounted or not available – ignore
+        pass
+
+    @app.post("/upload")
+    async def upload(file: UploadFile = File(...), segment_seconds: int = 12, fast: int = 1):
+        ffmpeg = os.getenv("FFMPEG_BIN", "ffmpeg")
+        base  = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8081")
+
+        job_id = f"up_{uuid.uuid4().hex[:8]}"
+        job_dir = TMP_ROOT / "jobs" / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+
+        # save input
+        src = job_dir / "input.mp4"
+        with src.open("wb") as f:
+            shutil.copyfileobj(file.file, f)
+
+        # segment -> seg_000.mp4, seg_001.mp4, ...
+        pattern = job_dir / "seg_%03d.mp4"
+        cmd = [
+            ffmpeg, "-y",
+            "-i", str(src),
+            "-reset_timestamps", "1",
+            "-map", "0", "-c", "copy",
+            "-segment_time", str(segment_seconds),
+            "-f", "segment", str(pattern)
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            return JSONResponse({"detail":"ffmpeg failed", "stderr":proc.stderr[-6000:]}, status_code=500)
+
+        segs = sorted(p for p in job_dir.glob("seg_*.mp4"))
+        urls = [f"{base}/files/jobs/{job_id}/{p.name}" for p in segs]
+
+        return {"job_id": job_id, "segment_urls": urls}
+except Exception as _e:
+    # keep import from crashing if anything above fails
+    pass
+# -------------------------------------------------------------------------------
+
+
+# --- SIMPLE MONITOR PAGE -------------------------------------------------------
+try:
+    from fastapi.responses import HTMLResponse
+    import json as _json
+except Exception:
+    pass
+
+    @app.get("/monitor/{job_id}")
+    def monitor(job_id: str):
+        job_js = _json.dumps(job_id)
+        html = r"""<!doctype html><meta charset="utf-8"/><title>Monitor</title>
+<style>
+  body{font-family:system-ui;margin:20px}
+  .row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+  video{width:640px;height:360px;background:#000;border-radius:8px}
+  pre{max-height:520px;overflow:auto;background:#111;color:#eee;padding:12px;border-radius:8px;min-width:420px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef;margin-left:8px}
+  ul#arts{margin:8px 0 0 0;padding:0;list-style:none}
+  ul#arts li{margin:4px 0}
+  ul#arts a{text-decoration:none}
+</style>
+<h1>Job <code>__JOB_TEXT__</code> <span id="badge" class="pill">waiting…</span></h1>
+<div class="row">
+  <div>
+    <video id="vid" controls muted playsinline></video>
+    <div style="margin-top:8px">
+      <button onclick="forcePoll()">Refresh now</button>
+      <a id="dump" target="_blank">Open full event dump</a>
+    </div>
+    <div style="margin-top:12px">
+      <h3 style="margin:0 0 6px">Artifacts</h3>
+      <ul id="arts"></ul>
     </div>
   </div>
-</body>
-""")
+  <pre id="log"></pre>
+</div>
+<script>
+const job   = __JOB_JSON__;
+const base  = location.origin;
+const logEl = document.getElementById('log');
+const vid   = document.getElementById('vid');
+const badge = document.getElementById('badge');
+const dumpA = document.getElementById('dump');
+const artsUl= document.getElementById('arts');
 
-@app.websocket("/ws/{job_id}")
-async def ws(job_id: str, websocket: WebSocket):
-    await websocket.accept()
-    channels.setdefault(job_id, []).append(websocket)
+let lastCount = -1;
+let lastVideoSrc = "";
+
+function pickBestVideoArtifact(arts) {
+  const vids = arts.filter(a => /\.(mp4|webm)(\?|$)/i.test(a.url));
+  if (vids.length === 0) return null;
+  vids.sort((a,b) => (b.name && b.name.includes('overlay') ? 1 : 0) - (a.name && a.name.includes('overlay') ? 1 : 0));
+  return vids.pop();
+}
+
+async function poll() {
+  try {
+    badge.textContent = st.last_type || "waiting…";
+
+    // Only refresh UI when event count changes
+    if ((st.events || 0) !== lastCount) {
+      lastCount = st.events || 0;
+
+      logEl.textContent = JSON.stringify(dump, null, 2);
+      const evts = (dump && dump.events) ? dump.events : [];
+
+      // Build artifacts list
+      const arts = [];
+      for (const e of evts) {
+        if (e.type === "artifact" && e.url) {
+          arts.push({ name: e.name || "artifact", url: e.url, seg: e.seg });
+        }
+      }
+      artsUl.innerHTML = "";
+      for (const a of arts) {
+        const li = document.createElement('li');
+        const segText = (a.seg != null ? ('seg ' + a.seg + ': ') : '');
+        artsUl.appendChild(li);
+      }
+
+      // Prefer overlay artifact; else show the last segment_start URL
+      const best = pickBestVideoArtifact(arts);
+      if (best && best.url !== lastVideoSrc) {
+        lastVideoSrc = best.url;
+        vid.src = best.url;
+        try { await vid.play(); } catch (e) {}
+      } else {
+        const latest = evts.length ? evts[evts.length - 1] : null;
+        if (latest && latest.type === "segment_start" && latest.url && latest.url !== lastVideoSrc) {
+          lastVideoSrc = latest.url;
+          vid.src = latest.url;
+          try { await vid.play(); } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {
+    badge.textContent = "error";
+  }
+}
+
+function forcePoll(){ lastCount = -1; poll(); }
+setInterval(poll, 1000); poll();
+</script>
+"""
+        html = html.replace("__JOB_JSON__", job_js).replace("__JOB_TEXT__", job_id)
+        return HTMLResponse(html)
+except Exception:
+    pass
+# -------------------------------------------------------------------------------
+
+
+# ---- PROGRESS & STATUS (minimal, in-memory) -----------------------------------
+import os
+from fastapi import Request, HTTPException
+
+if "JOBS" not in globals():
+    JOBS = {}  # job_id -> {"events":[...], "last_type":None}
+
+def _job(jid:str):
+    if jid not in JOBS:
+        JOBS[jid] = {"events": [], "last_type": None}
+    return JOBS[jid]
+
+@app.post("/progress/{job_id}")
+async def progress(job_id: str, req: Request):
+    # Optional: enforce secret
+    want = os.environ.get("CALLBACK_SECRET") or ""
+    got  = req.headers.get("x-callback-token", "")
+    if want and got != want:
+        raise HTTPException(status_code=401, detail="bad token")
+
+    payload = await req.json()
+    j = _job(job_id)
+
+    # store event and update last_type
+    et = payload.get("type")
+    j["events"].append(payload)
+    j["last_type"] = et
+
+    # You could persist to Supabase here; for demo we just keep it in memory
+    return {"ok": True}
+
+@app.get("/status/{job_id}")
+def status(job_id: str):
+    j = _job(job_id)
+    return {"ok": True, "events": len(j["events"]), "last_type": j["last_type"]}
+
+@app.get("/progress/{job_id}/dump")
+def dump(job_id: str):
+    j = _job(job_id)
+    return {"ok": True, "events": j["events"]}
+# ------------------------------------------------------------------------------
+
+
+# ---- analyze_local endpoint (background OpenCV overlay) ----------------------
+try:
+    from pydantic import BaseModel
+    from fastapi import BackgroundTasks
+    import os, requests, json
+    from overlay_analyzer import make_overlay_for_segment
+except Exception:
+    pass
+
+    class AnalyzeReq(BaseModel):
+        job_id: str
+        segment_urls: list[str]
+
+    def _post_progress(job_id: str, payload: dict):
+        base  = os.environ.get("PUBLIC_BASE_URL", "http://127.0.0.1:8081")
+        token = os.environ.get("CALLBACK_SECRET", "scoutsecret123")
+        requests.post(f"{base}/progress/{job_id}", json=payload,
+                      headers={"x-callback-token": token}, timeout=30).raise_for_status()
+
+    def _run_local_overlay(job_id: str, segs: list[str]):
+        for i, url in enumerate(segs):
+            _post_progress(job_id, {"type":"segment_start","seg":i,"url":url})
+            _post_progress(job_id, {"type":"status","seg":i,"msg":"analyzing (opencv)..."})
+            overlay_rel = make_overlay_for_segment(url, job_id, i)      # "/files/jobs/<job>/overlay_seg_000.mp4"
+            overlay_url = f"{os.environ.get('PUBLIC_BASE_URL','http://127.0.0.1:8081')}{overlay_rel}"
+            _post_progress(job_id, {"type":"artifact","seg":i,"name":f"overlay_seg_{i:03}.mp4","url":overlay_url})
+            _post_progress(job_id, {"type":"segment_done","seg":i})
+        _post_progress(job_id, {"type":"job_done"})
+
+    @app.post("/analyze_local")
+    def analyze_local(req: AnalyzeReq, bg: BackgroundTasks):
+        # fire-and-forget background job
+        bg.add_task(_run_local_overlay, req.job_id, req.segment_urls)
+        return {"ok": True, "job_id": req.job_id, "segments": len(req.segment_urls)}
+except Exception as _e:
+    # keep server booting even if overlay code missing
+    pass
+# -----------------------------------------------------------------------------
+
+
+# =================== LIVE MJPEG STREAM ===================
+try:
+    from fastapi.responses import StreamingResponse
+    import cv2, time
+    from .live_core import (
+        init_tracker_state, run_player_detector, run_tracker,
+        detect_ball, assign_teams, SpeedSmoother,
+        compute_control, draw_overlay
+    )
+except Exception:
+    pass
+
+    @app.get("/live")
+    def live(src: str, resize_w: int = 1280, skip: int = 1):
+        """
+        Open in browser:
+        /live?src=C:\\\\path\\\\to\\\\test.mp4
+        or a public/local segment URL.
+        """
+        def gen():
+            cap = cv2.VideoCapture(src)
+            if not cap.isOpened():
+                raise RuntimeError(f"Cannot open {src}")
+            st = init_tracker_state()
+            smooth = SpeedSmoother()
+            i = 0
+            
+            
+            last_ball = None
+
+            while True:
+                ok, frame = cap.read()
+                if not ok: break
+                if resize_w:
+                    h, w = frame.shape[:2]
+                    frame = cv2.resize(frame, (resize_w, int(resize_w*h/w)))
+                if i % max(1, skip) == 0:
+                    dets = run_player_detector(frame)
+                    tids, tracks = run_tracker(st, dets)
+                    ball = detect_ball(frame)
+                    assign_teams(st, frame, tracks)
+                    speeds = smooth.update(st, tracks)
+                    control = compute_control(st, tracks, ball)
+                    draw_overlay(frame, tracks, speeds, ball, st.team_of, control)
+                i += 1
+                ok, jpg = cv2.imencode(".jpg", frame)
+                if not ok: continue
+                yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg.tobytes() + b"\r\n")
+            cap.release()
+            # persist tuned values
+            try:
+                save_state(
+                    m_per_px=float(st.m_per_px),
+                    exclude_top_pct=float(exclude_top_pct),
+                    min_overlap=float(min_overlap),
+                    conf_min=float(conf_min)
+                )
+            except Exception:
+                pass
+            except Exception:
+                pass
+
+        return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame")
+except Exception as _e:
+    # keep API alive even if OpenCV/live_core not present
+    pass
+# =========================================================
+
+
+# =================== LIVE2 (pitch-filtered MJPEG stream with metrics) ===================
+try:
+    from fastapi.responses import StreamingResponse
+    import cv2, time
+    from .live_core import (
+        init_tracker_state, run_player_detector, run_tracker,
+        detect_ball, assign_teams, SpeedEstimator, estimate_m_per_px,
+        compute_control, draw_overlay, estimate_pitch_bounds
+    )
+    from .pitch import build_pitch_mask, box_kept_by_mask
+    from .numbering import SquadNumberer
+    from .metrics_core import (
+        MetricsState, nearest_player_to_ball, in_final_third,
+        header_likely, tackle_likely, pass_likely
+    )
     try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        try:
-            channels[job_id].remove(websocket)
-        except Exception:
-            pass
+        from .learn_state import load_state, save_state
+    except Exception:
+        pass
+    except Exception:
+        def load_state(): return {"m_per_px":0.25,"exclude_top_pct":0.25,"min_overlap":0.60,"conf_min":0.60}
+        def save_state(**kwargs): pass
+
+    # global live metrics snapshot (very small)
+    LIVE_METRICS = {"ok": False, "snapshot": {}}
+
+    @app.get("/metrics")
+    def metrics():
+        return LIVE_METRICS
+
+    @app.get("/live2")
+    def live2(
+        src: str,
+        resize_w: int = 1280,
+        skip: int = 1,
+        exclude_top_pct: float | None = None,
+        min_overlap: float | None = None,
+        conf_min: float | None = None
+    ):
+        _s = load_state()
+        if exclude_top_pct is None: exclude_top_pct = float(_s.get("exclude_top_pct", 0.25))
+        if min_overlap is None:     min_overlap     = float(_s.get("min_overlap", 0.60))
+        if conf_min is None:        conf_min        = float(_s.get("conf_min", 0.60))
+
+        def gen():
+            cap = cv2.VideoCapture(src)
+            if not cap.isOpened():
+                raise RuntimeError(f"Cannot open {src}")
+
+            st = init_tracker_state()
+            metr = MetricsState()
+            numr = SquadNumberer()
+
+            # first frame: mask/scale/bounds
+            ok, frame = cap.read()
+            if not ok:
+                cap.release(); raise RuntimeError("No frames.")
+            if resize_w:
+                h0, w0 = frame.shape[:2]
+                frame = cv2.resize(frame, (resize_w, int(resize_w*h0/w0)))
+
+            H, W = frame.shape[:2]
+            excl = (0, 0, W, int(H*exclude_top_pct))
+            st.pitch_mask = build_pitch_mask(frame, exclude_rect=excl)
+            bounds = estimate_pitch_bounds(st.pitch_mask)
+            st.m_per_px = estimate_m_per_px(st.pitch_mask)
+            speed = SpeedEstimator(m_per_px=st.m_per_px)
+
+            i = 0
+            while True:
+                if i>0:
+                    ok, frame = cap.read()
+                    if not ok: break
+                    if resize_w:
+                        h,w=frame.shape[:2]
+                        frame = cv2.resize(frame, (resize_w, int(resize_w*h/w)))
+
+                if i % max(1,skip)==0:
+                    dets = run_player_detector(frame, conf=conf_min)
+                    dets = [d for d in dets if box_kept_by_mask(d[:4], st.pitch_mask, min_overlap=min_overlap)]
+                    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+                    tids, tracks = run_tracker(st, dets, fps=fps)
+                    assign_teams(st, frame, tracks)
+
+                    # squad numbers & labels
+                    for tid, box in tracks.items():
+                        team = st.team_of.get(tid,0)
+                        numr.touch(team, tid)
+                    numr.gc()
+
+                    # ball
+                    raw_ball = detect_ball(frame)
+                    ball_xy = None
+                    if raw_ball:
+                        x1,y1,x2,y2 = raw_ball
+                        ball_xy = ((x1+x2)/2, (y1+y2)/2)
+                    bx, by = metr.ball_trk.step(ball_xy, fps=fps)
+
+                    # owner = nearest player under threshold
+                    owner_tid, dist = nearest_player_to_ball((bx,by), tracks)
+                    owner_team = st.team_of.get(owner_tid, 0) if owner_tid is not None else None
+                    if owner_team is not None:
+                        metr.update_possession(owner_team)
+
+                        sq = numr.get(owner_team, owner_tid)
+                        inside, xnorm = in_final_third((bx,by), bounds)
+                        metr.mark_touch(owner_team, sq, in_final_third=inside)
+
+                        # headers
+                        if owner_tid in tracks and header_likely((bx,by), tracks[owner_tid]):
+                            metr.mark_header(owner_team, sq)
+
+                        # simple pass / tackle inference
+                        prev = metr.current_owner
+                        new  = (owner_team, sq)
+                        if pass_likely(prev, new):
+                            metr.mark_pass(prev[0], prev[1] or 0, new[0], new[1] or 0, success=True)
+                        if tackle_likely(prev, new, dist):
+                            metr.mark_tackle(new[0], new[1])
+
+                    # speeds and control + overlay with A/B# numbers
+                    speeds = speed.update(st, tracks)
+                    control = compute_control(st, tracks, [bx-5,by-5,bx+5,by+5])
+
+                    # replace draw_overlay labels with numbered ones
+                    for tid, box in tracks.items():
+                        team = st.team_of.get(tid,0)
+                        sq = numr.get(team, tid)
+                        # draw number near feet
+                        x1,y1,x2,y2 = map(int, box)
+                        color = (0,255,0) if team==0 else (255,255,0)
+                        tag = ("A" if team==0 else "B") + str(sq)
+                        cv2.putText(frame, f"{tag} {speeds.get(tid,0.0):.1f} km/h",
+                                    (x1, max(0,y1-8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2, cv2.LINE_AA)
+                        cv2.rectangle(frame,(x1,y1),(x2,y2),color,2)
+                        cx=int((x1+x2)/2); cy=int(y2); cv2.circle(frame,(cx,cy),8,color,2)
+
+                    # draw ball
+                    cv2.circle(frame, (int(bx),int(by)), 6, (0,0,255), -1)
+
+                    # possession panel
+                    tot = max(1e-3, sum(metr.possession))
+                    pA = 100*metr.possession[0]/tot; pB = 100*metr.possession[1]/tot
+                    panel = (np.zeros((60,260,3), dtype=np.uint8))
+                    cv2.putText(panel, f"Team A Control: {pA:5.1f}%", (8,22), cv2.FONT_HERSHEY_SIMPLEX,0.6,(200,255,200),1,cv2.LINE_AA)
+                    cv2.putText(panel, f"Team B Control: {pB:5.1f}%", (8,48), cv2.FONT_HERSHEY_SIMPLEX,0.6,(200,255,200),1,cv2.LINE_AA)
+                    h,w=frame.shape[:2]; frame[h-60:h, w-260:w] = cv2.addWeighted(frame[h-60:h, w-260:w],0.3,panel,0.7,0)
+
+                    # formation sketch input (store centers per team)
+                    A=[]; B=[]
+                    for tid, b in tracks.items():
+                        cx=(b[0]+b[2])/2; cy=(b[1]+b[3])/2
+                        (A if st.team_of.get(tid,0)==0 else B).append((cx,cy))
+                    metr.form_hist.append((np.array(A), np.array(B)))
+
+                    # publish snapshot
+                    LIVE_METRICS["ok"]=True
+                    LIVE_METRICS["snapshot"]=metr.snapshot()
+
+                i+=1
+                ok, jpg = cv2.imencode(".jpg", frame)
+                if not ok: continue
+                yield (b"--frame\\r\\nContent-Type: image/jpeg\\r\\n\\r\\n" + jpg.tobytes() + b"\\r\\n")
+
+            cap.release()
+            try:
+                save_state(
+                    m_per_px=float(st.m_per_px),
+                    exclude_top_pct=float(exclude_top_pct),
+                    min_overlap=float(min_overlap),
+                    conf_min=float(conf_min)
+                )
+            except Exception:
+                pass
+            except Exception:
+                pass
+
+        return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame")
+except Exception:
+    pass
+# ==========================================================================
+
+
+# =================== LIVE2 (pitch-filtered MJPEG stream with metrics) ===================
+try:
+    from fastapi.responses import StreamingResponse
+    import cv2, time
+    from .live_core import (
+        init_tracker_state, run_player_detector, run_tracker,
+        detect_ball, assign_teams, SpeedEstimator, estimate_m_per_px,
+        compute_control, draw_overlay, estimate_pitch_bounds
+    )
+    from .pitch import build_pitch_mask, box_kept_by_mask
+    from .numbering import SquadNumberer
+    from .metrics_core import (
+        MetricsState, nearest_player_to_ball, in_final_third,
+        header_likely, tackle_likely, pass_likely
+    )
+    try:
+        from .learn_state import load_state, save_state
+    except Exception:
+        pass
+    except Exception:
+        def load_state(): return {"m_per_px":0.25,"exclude_top_pct":0.25,"min_overlap":0.60,"conf_min":0.60}
+        def save_state(**kwargs): pass
+
+    # global live metrics snapshot (very small)
+    LIVE_METRICS = {"ok": False, "snapshot": {}}
+
+    @app.get("/metrics")
+    def metrics():
+        return LIVE_METRICS
+
+    @app.get("/live2")
+    def live2(
+        src: str,
+        resize_w: int = 1280,
+        skip: int = 1,
+        exclude_top_pct: float | None = None,
+        min_overlap: float | None = None,
+        conf_min: float | None = None
+    ):
+        _s = load_state()
+        if exclude_top_pct is None: exclude_top_pct = float(_s.get("exclude_top_pct", 0.25))
+        if min_overlap is None:     min_overlap     = float(_s.get("min_overlap", 0.60))
+        if conf_min is None:        conf_min        = float(_s.get("conf_min", 0.60))
+
+        def gen():
+            cap = cv2.VideoCapture(src)
+            if not cap.isOpened():
+                raise RuntimeError(f"Cannot open {src}")
+
+            st = init_tracker_state()
+            metr = MetricsState()
+            numr = SquadNumberer()
+
+            # first frame: mask/scale/bounds
+            ok, frame = cap.read()
+            if not ok:
+                cap.release(); raise RuntimeError("No frames.")
+            if resize_w:
+                h0, w0 = frame.shape[:2]
+                frame = cv2.resize(frame, (resize_w, int(resize_w*h0/w0)))
+
+            H, W = frame.shape[:2]
+            excl = (0, 0, W, int(H*exclude_top_pct))
+            st.pitch_mask = build_pitch_mask(frame, exclude_rect=excl)
+            bounds = estimate_pitch_bounds(st.pitch_mask)
+            st.m_per_px = estimate_m_per_px(st.pitch_mask)
+            speed = SpeedEstimator(m_per_px=st.m_per_px)
+
+            i = 0
+            while True:
+                if i>0:
+                    ok, frame = cap.read()
+                    if not ok: break
+                    if resize_w:
+                        h,w=frame.shape[:2]
+                        frame = cv2.resize(frame, (resize_w, int(resize_w*h/w)))
+
+                if i % max(1,skip)==0:
+                    dets = run_player_detector(frame, conf=conf_min)
+                    dets = [d for d in dets if box_kept_by_mask(d[:4], st.pitch_mask, min_overlap=min_overlap)]
+                    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+                    tids, tracks = run_tracker(st, dets, fps=fps)
+                    assign_teams(st, frame, tracks)
+
+                    # squad numbers & labels
+                    for tid, box in tracks.items():
+                        team = st.team_of.get(tid,0)
+                        numr.touch(team, tid)
+                    numr.gc()
+
+                    # ball
+                    raw_ball = detect_ball(frame)
+                    ball_xy = None
+                    if raw_ball:
+                        x1,y1,x2,y2 = raw_ball
+                        ball_xy = ((x1+x2)/2, (y1+y2)/2)
+                    bx, by = metr.ball_trk.step(ball_xy, fps=fps)
+
+                    # owner = nearest player under threshold
+                    owner_tid, dist = nearest_player_to_ball((bx,by), tracks)
+                    owner_team = st.team_of.get(owner_tid, 0) if owner_tid is not None else None
+                    if owner_team is not None:
+                        metr.update_possession(owner_team)
+
+                        sq = numr.get(owner_team, owner_tid)
+                        inside, xnorm = in_final_third((bx,by), bounds)
+                        metr.mark_touch(owner_team, sq, in_final_third=inside)
+
+                        # headers
+                        if owner_tid in tracks and header_likely((bx,by), tracks[owner_tid]):
+                            metr.mark_header(owner_team, sq)
+
+                        # simple pass / tackle inference
+                        prev = metr.current_owner
+                        new  = (owner_team, sq)
+                        if pass_likely(prev, new):
+                            metr.mark_pass(prev[0], prev[1] or 0, new[0], new[1] or 0, success=True)
+                        if tackle_likely(prev, new, dist):
+                            metr.mark_tackle(new[0], new[1])
+
+                    # speeds and control + overlay with A/B# numbers
+                    speeds = speed.update(st, tracks)
+                    control = compute_control(st, tracks, [bx-5,by-5,bx+5,by+5])
+
+                    # replace draw_overlay labels with numbered ones
+                    for tid, box in tracks.items():
+                        team = st.team_of.get(tid,0)
+                        sq = numr.get(team, tid)
+                        # draw number near feet
+                        x1,y1,x2,y2 = map(int, box)
+                        color = (0,255,0) if team==0 else (255,255,0)
+                        tag = ("A" if team==0 else "B") + str(sq)
+                        cv2.putText(frame, f"{tag} {speeds.get(tid,0.0):.1f} km/h",
+                                    (x1, max(0,y1-8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2, cv2.LINE_AA)
+                        cv2.rectangle(frame,(x1,y1),(x2,y2),color,2)
+                        cx=int((x1+x2)/2); cy=int(y2); cv2.circle(frame,(cx,cy),8,color,2)
+
+                    # draw ball
+                    cv2.circle(frame, (int(bx),int(by)), 6, (0,0,255), -1)
+
+                    # possession panel
+                    tot = max(1e-3, sum(metr.possession))
+                    pA = 100*metr.possession[0]/tot; pB = 100*metr.possession[1]/tot
+                    panel = (np.zeros((60,260,3), dtype=np.uint8))
+                    cv2.putText(panel, f"Team A Control: {pA:5.1f}%", (8,22), cv2.FONT_HERSHEY_SIMPLEX,0.6,(200,255,200),1,cv2.LINE_AA)
+                    cv2.putText(panel, f"Team B Control: {pB:5.1f}%", (8,48), cv2.FONT_HERSHEY_SIMPLEX,0.6,(200,255,200),1,cv2.LINE_AA)
+                    h,w=frame.shape[:2]; frame[h-60:h, w-260:w] = cv2.addWeighted(frame[h-60:h, w-260:w],0.3,panel,0.7,0)
+
+                    # formation sketch input (store centers per team)
+                    A=[]; B=[]
+                    for tid, b in tracks.items():
+                        cx=(b[0]+b[2])/2; cy=(b[1]+b[3])/2
+                        (A if st.team_of.get(tid,0)==0 else B).append((cx,cy))
+                    metr.form_hist.append((np.array(A), np.array(B)))
+
+                    # publish snapshot
+                    LIVE_METRICS["ok"]=True
+                    LIVE_METRICS["snapshot"]=metr.snapshot()
+
+                i+=1
+                ok, jpg = cv2.imencode(".jpg", frame)
+                if not ok: continue
+                yield (b"--frame\\r\\nContent-Type: image/jpeg\\r\\n\\r\\n" + jpg.tobytes() + b"\\r\\n")
+
+            cap.release()
+            try:
+                save_state(
+                    m_per_px=float(st.m_per_px),
+                    exclude_top_pct=float(exclude_top_pct),
+                    min_overlap=float(min_overlap),
+                    conf_min=float(conf_min)
+                )
+            except Exception:
+                pass
+            except Exception:
+                pass
+
+        return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame")
+except Exception:
+    pass
+# ==========================================================================
+
+
+try:
+    from .learn_state import load_state, save_state
+except Exception:
+    pass
+except Exception:
+    load_state = lambda: {"m_per_px":0.25,"exclude_top_pct":0.25,"min_overlap":0.60,"conf_min":0.60}
+    save_state = lambda **kw: None
 
 
 
+
+
+
+
+# =================== LIVE_PRO (all-in-one stream + metrics) ===================
+try:
+    from fastapi.responses import StreamingResponse
+    import cv2, numpy as np, time
+    from .live_core import (
+        init_tracker_state, run_player_detector, run_tracker,
+        detect_ball, assign_teams, SpeedEstimator, estimate_m_per_px,
+        compute_control, draw_overlay, estimate_pitch_bounds
+    )
+    from .pitch import build_pitch_mask, box_kept_by_mask
+    from ultralytics import YOLO
+    from .numbering import SquadNumberer
+    from .metrics_core import MetricsState, nearest_to_ball, in_final_third
+except Exception:
+    pass
+
+    try:
+        from .learn_state import load_state, save_state
+    except Exception:
+        pass
+    except Exception:
+        def load_state(): return {"m_per_px":0.25,"exclude_top_pct":0.25,"min_overlap":0.60,"conf_min":0.60}
+        def save_state(**kwargs): pass
+
+    LIVE_METRICS = {"ok": False, "snapshot": {}}
+
+    @app.get("/metrics")
+    def metrics():
+        return LIVE_METRICS
+
+    # YOLO object detector for BALL (COCO "sports ball") and PERSON
+    _det_model = None
+    def _ensure_det():
+        global _det_model
+        if _det_model is None:
+            _det_model = YOLO("yolov8n.pt")  # auto-download
+
+    def yolo_person_and_ball(frame, conf=0.35):
+        _ensure_det()
+        r = _det_model.predict(source=frame, conf=conf, verbose=False)
+        boxes=[]; balls=[]
+        names = _det_model.model.names
+        for b in r[0].boxes:
+            x1,y1,x2,y2 = map(float, b.xyxy[0].tolist())
+            c = int(b.cls[0].item())
+            cf = float(b.conf[0].item())
+            label = names.get(c, "")
+            if c==0:   # person
+                boxes.append([x1,y1,x2,y2,cf])
+            elif label in ("sports ball","sportsball","ball"):  # safety across weights
+                balls.append([x1,y1,x2,y2,cf])
+        # best ball only
+        ball = max(balls, key=lambda t:t[4]) if balls else None
+        return boxes, ball
+
+    @app.get("/live_pro")
+    def live_pro(
+        src: str,
+        resize_w: int = 1280,
+        skip: int = 1,
+        exclude_top_pct: float | None = None,
+        min_overlap: float | None = None,
+        conf_min: float | None = None
+    ):
+        cfg = load_state()
+        if exclude_top_pct is None: exclude_top_pct = float(cfg.get("exclude_top_pct", 0.25))
+        if min_overlap is None:     min_overlap     = float(cfg.get("min_overlap", 0.60))
+        if conf_min is None:        conf_min        = float(cfg.get("conf_min", 0.60))
+
+        def gen():
+            cap = cv2.VideoCapture(src)
+            if not cap.isOpened():
+                raise RuntimeError(f"Cannot open {src}")
+
+            st  = init_tracker_state()
+            metr= MetricsState()
+            nums= SquadNumberer()
+
+            # boot: first frame -> mask/bounds/scale
+            ok, frame = cap.read()
+            if not ok: cap.release(); raise RuntimeError("No frames.")
+            if resize_w:
+                h0,w0 = frame.shape[:2]
+                frame = cv2.resize(frame, (resize_w, int(resize_w*h0/w0)))
+
+            H,W = frame.shape[:2]
+            excl = (0,0,W, int(H*exclude_top_pct))
+            st.pitch_mask = build_pitch_mask(frame, exclude_rect=excl)
+            bounds = estimate_pitch_bounds(st.pitch_mask)
+            st.m_per_px  = estimate_m_per_px(st.pitch_mask)
+            speed        = SpeedEstimator(m_per_px=st.m_per_px)
+
+            
+# ---- simple static UI mount ----
+try:
+    from fastapi.staticfiles import StaticFiles
+    app.mount('/web', StaticFiles(directory='web', html=True), name='web')
+except Exception:
+    pass
+except Exception:
+    pass
