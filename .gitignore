@@ -1,29 +1,38 @@
-﻿# Python
+﻿# OS / env
+.vscode/
+.venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.patch
+*.log
+*.tmp
+*.cache/
+.pytest_cache/
+.mypy_cache/
 
-# Local outputs
-metrics.json
-tracks.json
-tracks_norm.json
+# Large media
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.jpg
+*.jpeg
+*.png
 
-# Environments / secrets
-.env
-.env.*.local
-.venv/
-*.env
+# Models / weights / runs
+*.pt
+*.onnx
+runs/
+yolo*/ **/weights/
+*.ckpt
 
-# Node / frontend
-node_modules/
+# Local artifacts
+tmp_www/
+files/
+output/
 dist/
 build/
-
-# OS junk
-.DS_Store
-Thumbs.db
-
-# Testing
-.pytest_cache/
+node_modules/
