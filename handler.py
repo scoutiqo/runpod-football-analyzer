@@ -684,7 +684,6 @@ def handler(event):
                 os.remove(local)
             except:
                 pass
-
 # Do NOT start here if ENTRYPOINT runs the worker module.
 # The Dockerfile uses ENTRYPOINT to launch the RunPod worker:
 # ENTRYPOINT ["python", "-m", "runpod.serverless.worker", "--handler-path", "handler.py"]
