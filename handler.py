@@ -3,7 +3,6 @@ import os, json, uuid, tempfile, time, traceback
 from pathlib import Path
 from yt_dlp import YoutubeDL
 import requests
-import runpod
 import cv2
 import numpy as np
 from pipeline import run_pipeline
@@ -19,17 +18,27 @@ from render.heatmap import player_heatmap
 from merge.segments import merge_all, SegmentMerger
 from schemas.contracts import TracksJSON, PlayerInsights
 
-SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
-SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+# Environment variables - safe reads with validation
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 ANALYSES_BUCKET = os.getenv("ANALYSES_BUCKET", "analyses")
 CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "")
+
+def _require(name: str, val: str | None):
+    if val is None or val == "":
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return val
+
+# Validate critical environment variables at startup
+if not SUPABASE_URL or not SERVICE_ROLE:
+    raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
 
 print("[boot] runpod handler loaded; env OK", flush=True)
 
 # ---------------- helpers ----------------
 def sign_storage_path(bucket, path, expires=86400):
-    url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{path}"
-    h = {"Authorization": f"Bearer {SERVICE_ROLE}", "Content-Type": "application/json"}
+    url = f"{_require('SUPABASE_URL', SUPABASE_URL).rstrip('/')}/storage/v1/object/sign/{bucket}/{path}"
+    h = {"Authorization": f"Bearer {_require('SUPABASE_SERVICE_ROLE_KEY', SERVICE_ROLE)}", "Content-Type": "application/json"}
     r = requests.post(url, headers=h, data=json.dumps({"expiresIn": int(expires)}), timeout=30)
     if not r.ok:
         raise RuntimeError(f"sign failed {r.status_code}: {r.text}")
@@ -57,7 +66,7 @@ def post_cb(url, payload):
     try:
         headers = {
             "Content-Type": "application/json",
-            "X-Callback-Token": CALLBACK_SECRET
+            "X-Callback-Secret": CALLBACK_SECRET
         }
         r = requests.post(url, headers=headers, json=payload, timeout=30)
         if not r.ok:
@@ -98,9 +107,9 @@ def dl_tmp(url: str) -> str:
     return p
 
 def upload_bytes(bucket, path, data, content_type):
-    url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
+    url = f"{_require('SUPABASE_URL', SUPABASE_URL).rstrip('/')}/storage/v1/object/{bucket}/{path}"
     h = {
-        "Authorization": f"Bearer {SERVICE_ROLE}",
+        "Authorization": f"Bearer {_require('SUPABASE_SERVICE_ROLE_KEY', SERVICE_ROLE)}",
         "x-upsert": "true",
         "Content-Type": content_type
     }
@@ -118,10 +127,10 @@ def upload_bytes(bucket, path, data, content_type):
 
 def upsert_rest(table, row, on_conflict):
     oc = ",".join(on_conflict) if isinstance(on_conflict, (list, tuple)) else str(on_conflict)
-    url = f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={oc}"
+    url = f"{_require('SUPABASE_URL', SUPABASE_URL).rstrip('/')}/rest/v1/{table}?on_conflict={oc}"
     headers = {
-        "Authorization": f"Bearer {SERVICE_ROLE}",
-        "apikey": SERVICE_ROLE,
+        "Authorization": f"Bearer {_require('SUPABASE_SERVICE_ROLE_KEY', SERVICE_ROLE)}",
+        "apikey": _require('SUPABASE_SERVICE_ROLE_KEY', SERVICE_ROLE),
         "Content-Type": "application/json",
         "Prefer": "resolution=merge-duplicates,return=representation"
     }
@@ -153,7 +162,7 @@ def handler(event):
     job_id = inp.get("job_id")
     segs = inp.get("segment_urls")
     cb = inp.get("callback_url")
-    callback_secret = inp.get("callback_secret")
+    # callback_secret removed - use env variable only for security
     
     # Load params for defaults
     cfg = json.load(open("params.json", "r", encoding="utf-8")) if os.path.exists("params.json") else {}
@@ -242,15 +251,15 @@ def handler(event):
                                 PhoenixCfg(fps=fps, attack_dir={"home": +1, "away": -1})
                             )
                             
-                        # Save Phoenix results
-                        phoenix_paths = save_json_serializable_graph(phoenix_result, f"/tmp/jobs/{job_id}/seg_{i:03d}")
-                        
-                        # Collect data for training
-                        from automl.collector import collect_job
-                        collect_job(job_id, f"/tmp/jobs/{job_id}/seg_{i:03d}")
-                        
-                        print(f"Phoenix pipeline completed for segment {i}")
+                            # Save Phoenix results
+                            phoenix_paths = save_json_serializable_graph(phoenix_result, f"/tmp/jobs/{job_id}/seg_{i:03d}")
                             
+                            # Collect data for training
+                            from automl.collector import collect_job
+                            collect_job(job_id, f"/tmp/jobs/{job_id}/seg_{i:03d}")
+                            
+                            print(f"Phoenix pipeline completed for segment {i}")
+                                
                         except Exception as e:
                             print(f"Phoenix pipeline failed for segment {i}: {e}")
                             # Continue with regular processing
@@ -366,7 +375,15 @@ def handler(event):
                             pass
                 
                 segment_results.append(segment_result)
-                post_cb(cb, {"type": "segment_done", "seg": i, "metrics": segment_result})
+                # Light payload - avoid sending large segment_result
+                post_cb(cb, {
+                    "type": "segment_done", 
+                    "seg": i, 
+                    "status": "completed",
+                    "frames_processed": segment_result.get("analysis", {}).get("frames_processed", 0),
+                    "players_detected": segment_result.get("analysis", {}).get("unique_players", 0),
+                    "events_found": len(segment_result.get("analysis", {}).get("events", []))
+                })
                 processed += 1
                 
             except Exception as e:
@@ -668,5 +685,7 @@ def handler(event):
             except:
                 pass
 
-# Start serverless handler
-runpod.serverless.start({"handler": handler})
+# Do NOT start here if ENTRYPOINT runs the worker module.
+# The Dockerfile uses ENTRYPOINT to launch the RunPod worker:
+# ENTRYPOINT ["python", "-m", "runpod.serverless.worker", "--handler-path", "handler.py"]
+# This will load the handler function directly, so no need to call runpod.serverless.start()
