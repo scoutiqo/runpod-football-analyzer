@@ -22,8 +22,4 @@ PY
 
 ENV PYTHONUNBUFFERED=1
 ENV RUNPOD_DEBUG_LEVEL=DEBUG
-ENTRYPOINT ["python", "-m", "runpod.serverless.worker",
-            "--handler-path", "/app/handler.py",
-            "--handler", "handler",
-            "--log-level", "debug"]
-
+ENTRYPOINT ["python", "-m", "runpod.serverless.worker", "--handler-path", "/app/handler.py", "--handler", "handler", "--log-level", "debug"]
