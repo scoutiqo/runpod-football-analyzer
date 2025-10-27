@@ -667,6 +667,4 @@ def handler(event):
                 os.remove(local)
             except:
                 pass
-
-# Start serverless handler
-runpod.serverless.start({"handler": handler})
+                
