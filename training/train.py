@@ -11,18 +11,19 @@ def jprint(obj): print(json.dumps(obj, ensure_ascii=False), flush=True)
 
 def now(): return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-def train(
-    model_base: str,
-    out_dir: Path,
+def train_main(
+    dataset: str,
+    model: str = "yolov8n.pt",
     epochs: int = 10,
-    imgsz: int = 640,
     batch: int = 8,
-    lr0: float = 1e-3,
-    dataset_yaml: Optional[Path] = None,
-    video_paths: Optional[List[str]] = None,
-    pseudolabel_conf: float = 0.4,
-    pseudolabel_every_n: int = 5
+    imgsz: int = 640,
+    project: str = "/tmp/train",
+    name: str = "train_run",
+    resume: bool = False,
+    device: str = "cpu",
+    progress_cb=None
 ):
+    out_dir = Path(project)
     out_dir.mkdir(parents=True, exist_ok=True)
     logs_dir = out_dir / "logs"
     ckpt_dir = out_dir / "checkpoints"
@@ -30,18 +31,11 @@ def train(
     ckpt_dir.mkdir(exist_ok=True)
     jsonl = logs_dir / "train.jsonl"
 
-    # Prepare dataset
-    if dataset_yaml is None:
-        if not video_paths:
-            raise SystemExit("Either dataset_yaml or video_paths must be provided.")
-        ds_root = out_dir / "pseudolabel_dataset"
-        ds_yaml = build_from_videos(video_paths, ds_root, model_base, conf=pseudolabel_conf, every_n=pseudolabel_every_n)
-        dataset_yaml = ds_yaml
-
-    model = YOLO(model_base)
+    # Load YOLO model
+    yolo_model = YOLO(model)
 
     # Attach callbacks for epoch logging
-    epoch_state = {"last_ckpt": None}
+    epoch_state = {"last_ckpt": None, "best_ckpt": None}
 
     def on_fit_epoch_end(trainer):
         # Ultralytics passes a trainer with stats; extract real values
@@ -57,6 +51,15 @@ def train(
         with open(jsonl, "a", encoding="utf-8") as f:
             f.write(json.dumps(metrics) + "\n")
         print(f"TRAIN_EPOCH:{epoch}/{max_epoch} loss={metrics['train_loss']} lr={metrics['lr']}", flush=True)
+        
+        # Call progress callback if provided
+        if progress_cb:
+            progress_cb({
+                "epoch": epoch,
+                "epochs": max_epoch,
+                "train_loss": metrics['train_loss'],
+                "lr": metrics['lr']
+            })
 
     def on_model_save(trainer):
         # Copy last.pt/best.pt into our checkpoints folder and print a machine-readable line
@@ -70,27 +73,51 @@ def train(
         if src_best.exists():
             dst = ckpt_dir / "best.pt"
             shutil.copy2(src_best, dst)
+            epoch_state["best_ckpt"] = str(dst)
             print(f"CHECKPOINT:{dst.as_posix()}", flush=True)
 
-    model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
-    model.add_callback("on_model_save", on_model_save)
+    yolo_model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
+    yolo_model.add_callback("on_model_save", on_model_save)
 
     # Real training (no mocks)
-    results = model.train(
-        data=str(dataset_yaml),
+    results = yolo_model.train(
+        data=dataset,
         epochs=epochs,
         imgsz=imgsz,
         batch=batch,
-        lr0=lr0,
         project=str(out_dir),
-        name="ultra_run",
+        name=name,
         pretrained=True,
-        verbose=True
+        verbose=True,
+        device=device,
+        resume=resume
     )
 
-    # Print a final pointer the handler/server can use
+    # Find results directory
+    results_dir = None
+    for item in out_dir.glob(f"**/{name}"):
+        if item.is_dir():
+            results_dir = str(item)
+            break
+    
+    # Find curves PNG
+    curves_png = None
+    if results_dir:
+        for png_file in Path(results_dir).glob("**/*.png"):
+            if "results" in png_file.name.lower():
+                curves_png = str(png_file)
+                break
+
+    # Return artifacts dict
+    artifacts = {
+        "best_ckpt": epoch_state.get("best_ckpt"),
+        "last_ckpt": epoch_state.get("last_ckpt"),
+        "curves_png": curves_png,
+        "results_dir": results_dir
+    }
+
     print(f"RESULT_DIR:{out_dir.as_posix()}", flush=True)
-    return out_dir
+    return artifacts
 
 if __name__ == "__main__":
     # Minimal CLI for RunPod handler; parse env/argv lightly

@@ -1,9 +1,11 @@
 # handler.py (Updated with new pipeline)
 import os, json, uuid, tempfile, time, traceback
+from pathlib import Path
 from yt_dlp import YoutubeDL
 import requests
 import runpod
 import cv2
+import numpy as np
 from pipeline import run_pipeline
 from evaluator import compute_metrics  # For auto-tuning
 from ai_agent import decide, write_patch  # For auto-tuning
@@ -419,6 +421,153 @@ def handler(event):
         except Exception as e:
             post_cb(cb, {"type": "error", "message": f"Merge failed: {str(e)}"})
             return {"ok": False, "error": str(e)}
+
+    # ---------- Mode C: TRAIN (dataset + epochs + config) ----------
+    mode = (event.get("input") or {}).get("mode")
+    if mode == "train":
+        inp = (event.get("input") or {})
+        job_id = inp.get("job_id") or str(uuid.uuid4())[:8]
+        cb = inp.get("callback_url")  # optional
+        dataset = inp.get("dataset")  # e.g. 'public/datasets/my_dataset' or signed URL / R2 path / local mount
+        epochs = int(inp.get("epochs", 20))
+        batch = int(inp.get("batch", 16))
+        imgsz = int(inp.get("imgsz", 1280))
+        model = inp.get("model", "yolov8x.pt")
+        project = inp.get("project", f"/tmp/train/{job_id}")
+        run_name = inp.get("run_name", f"train_{job_id}")
+        resume = bool(inp.get("resume", False))
+
+        # Optional pseudo-label pass controls
+        do_pseudolabels = bool(inp.get("pseudolabels", True))
+        pseudolabel_source = inp.get("pseudolabel_source")  # videos folder or URL list
+
+        # record job start in Supabase (best-effort)
+        try:
+            upsert_rest(
+                "analysis_jobs",
+                {"id": job_id, "status": "running", "kind": "train", "player_id": None, "video_url": None},
+                on_conflict="id"
+            )
+        except Exception as e:
+            print("WARN: analysis_jobs upsert running (train) failed:", e, flush=True)
+
+        def cb_post(payload):
+            if cb:
+                post_cb(cb, {"job_id": job_id, **payload})
+
+        try:
+            os.makedirs(project, exist_ok=True)
+
+            # 0) (Optional) PSEUDO-LABEL GENERATION
+            if do_pseudolabels and pseudolabel_source:
+                try:
+                    from training.generate_pseudolabels import generate_main as _gen_pl
+                    cb_post({"type": "pseudolabels_start", "source": str(pseudolabel_source)})
+                    pl_out = Path(project) / "pseudolabels"
+                    pl_out.mkdir(parents=True, exist_ok=True)
+                    _gen_pl(
+                        source=pseudolabel_source,
+                        out_dir=str(pl_out),
+                        model=model,
+                        imgsz=imgsz,
+                        conf=inp.get("pl_conf", 0.25),
+                        iou=inp.get("pl_iou", 0.5),
+                        device=inp.get("device", "cpu"),
+                        progress_cb=lambda p: cb_post({"type": "pseudolabels_progress", **p})
+                    )
+                    # If dataset wasn't provided but pseudo labels were created, use them as dataset
+                    if not dataset:
+                        dataset = str(pl_out)
+                    cb_post({"type": "pseudolabels_done", "out": str(pl_out)})
+                except Exception as e:
+                    cb_post({"type": "pseudolabels_error", "error": str(e)})
+
+            if not dataset:
+                raise RuntimeError("TRAIN mode requires 'dataset' (folder or YAML).")
+
+            # 1) TRAIN
+            from training.train import train_main as _train
+            cb_post({
+                "type": "train_start",
+                "dataset": str(dataset),
+                "epochs": epochs,
+                "batch": batch,
+                "imgsz": imgsz,
+                "model": model,
+                "project": project,
+                "run_name": run_name,
+                "resume": resume
+            })
+
+            train_artifacts = _train(
+                dataset=dataset,
+                model=model,
+                epochs=epochs,
+                batch=batch,
+                imgsz=imgsz,
+                project=project,
+                name=run_name,
+                resume=resume,
+                device=inp.get("device", "cpu"),
+                progress_cb=lambda p: cb_post({"type": "train_progress", **p})
+            )
+
+            # 2) UPLOAD ARTIFACTS TO SUPABASE (best-effort)
+            # Expect train_artifacts to contain keys like: weights_path, results_dir, curves_png, last_ckpt, best_ckpt
+            signed = {}
+            try:
+                artifacts_to_push = []
+                for k in ("best_ckpt", "last_ckpt", "curves_png", "results_dir"):
+                    v = train_artifacts.get(k)
+                    if v:
+                        artifacts_to_push.append((k, v))
+                for label, p in artifacts_to_push:
+                    p = Path(p)
+                    if p.is_file():
+                        key = f"training/{job_id}/{p.name}"
+                        upload_bytes(ANALYSES_BUCKET, key, p.read_bytes(), "application/octet-stream")
+                        signed[label] = sign_storage_path(ANALYSES_BUCKET, key, expires=7*24*3600)
+                    elif p.is_dir():
+                        # push selected files from dir
+                        for f in p.glob("*"):
+                            if f.is_file():
+                                key = f"training/{job_id}/{f.name}"
+                                upload_bytes(ANALYSES_BUCKET, key, f.read_bytes(), "application/octet-stream")
+                        # sign index file if exists
+                        idx = p / "results.csv"
+                        if idx.exists():
+                            key = f"training/{job_id}/results.csv"
+                            signed["results_csv"] = sign_storage_path(ANALYSES_BUCKET, key, expires=7*24*3600)
+                cb_post({"type": "artifacts_uploaded", "signed": signed})
+            except Exception as e:
+                cb_post({"type": "artifacts_upload_error", "error": str(e)})
+
+            # 3) FINISH
+            try:
+                upsert_rest(
+                    "analysis_jobs",
+                    {"id": job_id, "status": "done", "kind": "train", "result_url": json.dumps(signed)},
+                    on_conflict="id"
+                )
+            except Exception as e:
+                print("WARN: upsert done (train) failed:", e, flush=True)
+
+            cb_post({"type": "done", "job_id": job_id, "signed": signed})
+            return {"ok": True, "mode": "train", "job_id": job_id, "artifacts": signed}
+
+        except Exception as e:
+            tb = traceback.format_exc()
+            cb_post({"type": "error", "error": str(e)})
+            try:
+                upsert_rest(
+                    "analysis_jobs",
+                    {"id": job_id, "status": "error", "kind": "train", "result_url": None},
+                    on_conflict="id"
+                )
+            except:
+                pass
+            print("ERROR (train):", tb, flush=True)
+            return {"ok": False, "mode": "train", "job_id": job_id, "error": str(e), "traceback": tb}
 
     # ---------- Mode B: single-video Supabase pipeline ----------
     player_id = str(inp.get("player_id", "")).strip()

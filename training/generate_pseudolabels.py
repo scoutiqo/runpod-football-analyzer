@@ -71,6 +71,44 @@ def make_dataset_yaml(root: Path, yaml_path: Path, names: List[str]):
         content.append(f"  {i}: {n}")
     yaml_path.write_text("\n".join(content))
 
+def generate_main(
+    source: str,
+    out_dir: str,
+    model: str = "yolov8n.pt",
+    imgsz: int = 640,
+    conf: float = 0.25,
+    iou: float = 0.5,
+    device: str = "cpu",
+    progress_cb=None
+):
+    """Generate pseudo-labels from videos or images using YOLO model."""
+    out_root = Path(out_dir)
+    out_root.mkdir(parents=True, exist_ok=True)
+    
+    # Determine if source is a directory or list of files
+    if os.path.isdir(source):
+        video_paths = [str(f) for f in Path(source).glob("*.mp4")]
+    else:
+        # Assume it's a JSON string or single file
+        try:
+            video_paths = json.loads(source)
+        except:
+            video_paths = [source]
+    
+    if not video_paths:
+        raise ValueError(f"No video files found in source: {source}")
+    
+    if progress_cb:
+        progress_cb({"status": "starting", "videos": len(video_paths)})
+    
+    # Build dataset from videos
+    dataset_yaml = build_from_videos(video_paths, out_root, model, conf=conf, every_n=5)
+    
+    if progress_cb:
+        progress_cb({"status": "completed", "dataset_yaml": str(dataset_yaml)})
+    
+    return str(dataset_yaml)
+
 def build_from_videos(video_paths: List[str], out_root: Path, model_weights: str, conf: float = 0.4,
                       every_n: int = 5, holdout_every_k: int = 10):
     img_train = out_root / "images/train"
