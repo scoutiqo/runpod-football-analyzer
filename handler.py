@@ -24,6 +24,8 @@ SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 ANALYSES_BUCKET = os.getenv("ANALYSES_BUCKET", "analyses")
 CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "")
 
+print("[boot] runpod handler loaded; env OK", flush=True)
+
 # ---------------- helpers ----------------
 def sign_storage_path(bucket, path, expires=86400):
     url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{path}"

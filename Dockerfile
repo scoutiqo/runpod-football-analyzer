@@ -21,4 +21,4 @@ YOLO('yolov8n.pt')
 PY
 
 # start RunPod worker (matches handler.py -> def handler(event))
-CMD ["python","-m","runpod_serverless.worker","--handler","handler.handler"]
+CMD ["python", "-m", "runpod.serverless.worker", "--handler-path", "handler.py"]
