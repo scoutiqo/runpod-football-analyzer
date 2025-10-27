@@ -1,488 +1,627 @@
 # server/server.py
-import os, uuid, json, tempfile, subprocess, time, logging
+import os
+import asyncio
+import cv2
+import numpy as np
+import json
+import time
 from pathlib import Path
-from typing import Dict, List
-
-import requests
-from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException, Request, Header
+from typing import Dict, List, Optional, Any
+from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-from fastapi import Form
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.websockets import WebSocketState
 
+FILES_ROOT = os.getenv("FILES_ROOT", "./files")
 
-# --- .env support (optional)
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
+# 1) Create the app FIRST
+app = FastAPI(title="ScoutIQO Analyzer")
 
-# -------- Config --------
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
-RUNPOD_ENDPOINT = os.getenv("RUNPOD_ENDPOINT", "").strip()  # e.g. https://api.runpod.ai/v2/<endpoint-id>/run
-RUNPOD_API_KEY  = os.getenv("RUNPOD_API_KEY", "").strip()
-
-# Supabase (server-side only, required by /upload in Step 2+)
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "scoutiqo")
-
-# Shared secret to protect the progress callback
-CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "")
-
-app = FastAPI(title="ScoutIQO Analyzer", docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json")
+# 2) Middleware
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
+    CORSMiddleware,
+    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"], allow_credentials=True
 )
 
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("uvicorn")
+# 3) Mount static artifacts (/files/jobs/<id>/...)
+app.mount("/files", StaticFiles(directory=FILES_ROOT), name="files")
 
-# -------- static media root (kept for compatibility; /upload no longer uses this) --------
-MEDIA_ROOT = Path("data")
-MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
-app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
+# Global storage for live analysis
+live_sessions: Dict[str, Dict[str, Any]] = {}
+active_websockets: Dict[str, List[WebSocket]] = {}
 
-# -------- simple WS pub/sub --------
-channels: Dict[str, List[WebSocket]] = {}
-async def publish(job_id: str, event: dict):
-    for ws in list(channels.get(job_id, [])):
-        try:
-            await ws.send_text(json.dumps(event))
-        except Exception:
-            try:
-                channels[job_id].remove(ws)
-            except Exception:
-                pass
+# 4) Include routers AFTER app exists (imports may reference `app`)
+#    These modules must each define `router = APIRouter(...)`
+from server.monitor import router as monitor_router       # GET /monitor/{job_id} (SSE)
+from server.progress import router as progress_router     # POST /progress/{job_id}
+from server.train_routes import router as train_router    # Training routes
+from server.live_track_demo import router as demo_router  # POST /demo/track (local proof)
+from server.simple_demo import router as simple_demo_router  # POST /demo/simple (simple proof)
+# Optional: your segmented flow
+# from server.routes_ingest import router as ingest_router # /upload, /analyze, /files/...
 
-# -------- in-memory progress store --------
-progress_store: Dict[str, List[dict]] = {}
+app.include_router(monitor_router)
+app.include_router(progress_router)
+app.include_router(train_router)
+app.include_router(demo_router)
+app.include_router(simple_demo_router)
+# app.include_router(ingest_router)
 
-# -------- ffmpeg helpers --------
-def _run_ffmpeg(cmd: list):
-    log.info("FFmpeg: %s", " ".join(str(c) for c in cmd))
-    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    if p.returncode != 0:
-        out = p.stdout.decode(errors="ignore")
-        log.error("FFmpeg failed:\n%s", out[:2000])
-        raise RuntimeError(out)
-
-def transcode_and_segment_local(local_input: str, seg_seconds: int, job_id: str) -> list[Path]:
-    """
-    Normalize video then segment into a temporary directory.
-    Returns a list of local Path objects to seg_XXX.mp4
-    """
-    tmp_norm = tempfile.mktemp(suffix=".mp4")
-    _run_ffmpeg([
-        "ffmpeg","-y","-hwaccel","auto","-i", local_input,
-        "-vf","scale='min(1280,iw)':-2,fps=25",
-        "-c:v","h264","-preset","veryfast","-crf","20",
-        "-g","50","-keyint_min","50","-sc_threshold","0",
-        "-c:a","aac","-ac","1","-ar","32000","-b:a","64k",
-        tmp_norm
-    ])
-    out_dir = Path(tempfile.mkdtemp()) / job_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    _run_ffmpeg([
-        "ffmpeg","-y","-i", tmp_norm, "-reset_timestamps","1","-map","0","-c","copy",
-        "-segment_time", str(seg_seconds), "-f","segment", str(out_dir / "seg_%03d.mp4")
-    ])
-    return sorted(out_dir.glob("seg_*.mp4"))
-
-def segment_copy_only_local(local_input: str, seg_seconds: int, job_id: str) -> list[Path]:
-    """
-    Copy-only segmentation into a temporary directory.
-    Returns a list of local Path objects to seg_XXX.mp4
-    """
-    out_dir = Path(tempfile.mkdtemp()) / job_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    _run_ffmpeg([
-        "ffmpeg","-y","-i", local_input, "-reset_timestamps","1","-map","0","-c","copy",
-        "-segment_time", str(seg_seconds), "-f","segment", str(out_dir / "seg_%03d.mp4")
-    ])
-    return sorted(out_dir.glob("seg_*.mp4"))
-
-# -------- Supabase storage client --------
-def _guess_ct(path: str) -> str:
-    import mimetypes
-    return mimetypes.guess_type(path)[0] or "application/octet-stream"
-
-def _sb_headers() -> dict:
-    return {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-    }
-
-def _sb_base() -> str:
-    return f"{SUPABASE_URL}/storage/v1"
-
-def supabase_put_file(local_path: str, object_key: str) -> dict:
-    """
-    Upload local file to Supabase bucket at object_key.
-    Returns: {"bucket": str, "key": str, "signed_url": str, "public_url": str}
-    """
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        raise HTTPException(500, "Supabase env not set (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)")
-    p = Path(local_path)
-    if not p.exists():
-        raise FileNotFoundError(local_path)
-    url = f"{_sb_base()}/object/{SUPABASE_BUCKET}/{object_key}"
-    with open(p, "rb") as f:
-        r = requests.post(url, headers={**_sb_headers(), "Content-Type": _guess_ct(str(p))}, data=f)
-    if r.status_code >= 300:
-        raise HTTPException(500, f"Supabase upload failed {r.status_code}: {r.text[:400]}")
-    # signed url (24h)
-    signed = supabase_sign_url(object_key, expires_in=24*3600)
-    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{object_key}"
-    return {"bucket": SUPABASE_BUCKET, "key": object_key, "signed_url": signed, "public_url": public_url}
-
-def supabase_sign_url(object_key: str, expires_in: int = 3600) -> str:
-    url = f"{_sb_base()}/object/sign/{SUPABASE_BUCKET}/{object_key}"
-    r = requests.post(url, headers=_sb_headers(), json={"expiresIn": expires_in})
-    if r.status_code >= 300:
-        raise HTTPException(500, f"Supabase sign failed {r.status_code}: {r.text[:400]}")
-    signed_path = (r.json().get("signedURL") or r.json().get("signedUrl"))
-    if not signed_path:
-        raise HTTPException(500, f"Supabase sign response missing signedURL: {r.text[:400]}")
-    return f"{SUPABASE_URL}/storage/v1{signed_path}"
-
-# -------- API --------
+# Basic endpoints
 @app.get("/")
 def root():
-    return {"ok": True, "health": "/health", "docs": "/docs", "monitor": "/monitor/<job_id>"}
+    return {"ok": True, "message": "ScoutIQO Analyzer Server"}
 
 @app.get("/health")
 def health():
     return {"ok": True}
 
-@app.post("/upload")
-async def upload(file: UploadFile = File(...), segment_seconds: int = 20, fast: int = 1):
-    """
-    Step 2 version:
-      1) save upload to a temp file
-      2) segment locally into temp dir
-      3) upload each seg to Supabase Storage
-      4) return SIGNED URLs (not /media)
-    """
-    suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
-    tmp_in = tempfile.mktemp(suffix=suffix)
-    job_id = f"up_{uuid.uuid4().hex[:8]}"
+# (Optional) Friendly GET to avoid 405 confusion
+from fastapi.responses import JSONResponse
+@app.get("/ai/analyze")
+def analyze_get():
+    return JSONResponse({"detail":"Use POST /analyze with JSON body: {\"job_id\":\"...\",\"segment_urls\":[]}"})
 
-    # Save uploaded file to temp
-    with open(tmp_in, "wb") as f:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
+# ==================== LIVE VIDEO ANALYSIS ====================
 
-    # Segment locally (temp dir)
-    seg_paths = (
-        segment_copy_only_local(tmp_in, seg_seconds=segment_seconds, job_id=job_id)
-        if fast else
-        transcode_and_segment_local(tmp_in, seg_seconds=segment_seconds, job_id=job_id)
-    )
+class LiveVideoAnalyzer:
+    """Real-time video analysis with actual tracking data"""
+    
+    def __init__(self, video_path: str, session_id: str):
+        self.video_path = video_path
+        self.session_id = session_id
+        self.cap = None
+        self.detector = None
+        self.tracker = None
+        self.ball_tracker = None
+        self.team_assigner = None
+        self.is_running = False
+        self.current_frame = 0
+        self.fps = 30.0
+        self.total_frames = 0
 
-    # Upload each segment to Supabase
-    signed_urls: List[str] = []
-    for p in seg_paths:
-        object_key = f"jobs/{job_id}/{p.name}"
-        info = supabase_put_file(str(p), object_key)
-        signed_urls.append(info["signed_url"])
-
-    # Cleanup temp files (best-effort)
-    try:
-        Path(tmp_in).unlink(missing_ok=True)
-        for p in seg_paths:
-            p.unlink(missing_ok=True)
-        # remove empty parent directory if any
-        if seg_paths:
-            seg_paths[0].parent.rmdir()
-    except Exception:
-        pass
-
-    return {"job_id": job_id, "segments": signed_urls}
-
-class AnalyzeReq(BaseModel):
-    segment_urls: List[str]
-    preset: str | None = "fast"
-    workers: int | None = 4
-
-@app.post("/analyze")
-def analyze(req: AnalyzeReq):
-    if not RUNPOD_ENDPOINT:
-        raise HTTPException(500, "RUNPOD_ENDPOINT not set")
-    job_id = str(uuid.uuid4())[:8]
-    if not req.segment_urls:
-        raise HTTPException(400, "segment_urls required")
-    payload = {
-        "job_id": job_id,
-        "segment_urls": req.segment_urls,
-        "callback_url": f"{PUBLIC_BASE_URL}/progress/{job_id}",
-        "preset": req.preset or "fast",
-        "workers": int(req.workers or 4),
-        "make_overlay": True,
-    }
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_API_KEY}"}
-    r = requests.post(RUNPOD_ENDPOINT, headers=headers, json={"input": payload}, timeout=60)
-    if r.status_code >= 300:
-        raise HTTPException(500, f"RunPod launch failed: {r.text}")
-    return {"job_id": job_id}
-
-# --- progress capture (protected by shared secret) ---
-@app.post("/progress/{job_id}")
-async def progress(job_id: str, req: Request, x_callback_token: str | None = Header(None)):
-    # Require secret header from RunPod
-    if not CALLBACK_SECRET or x_callback_token != CALLBACK_SECRET:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    data = await req.json()
-    progress_store.setdefault(job_id, []).append({"ts": time.time(), **data})
-    logging.info("PROGRESS %s: %s", job_id, data)
-    await publish(job_id, data)
-    return {"ok": True}
-
-@app.get("/status/{job_id}")
-def status(job_id: str):
-    evts = progress_store.get(job_id, [])
-    return {"job_id": job_id, "events": len(evts), "last_type": (evts[-1]["type"] if evts else None)}
-
-@app.get("/progress/{job_id}/dump")
-def dump(job_id: str):
-    return {"job_id": job_id, "events": progress_store.get(job_id, [])}
-
-# --- minimal monitor page ---
-@app.get("/monitor/{job_id}")
-def monitor(job_id: str):
-    return HTMLResponse(f"""
-<!doctype html><meta charset="utf-8"/><title>Monitor – {job_id}</title>
-<style>
-  body{{font-family:system-ui;margin:20px}}
-  .row{{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}}
-  video{{width:640px;height:360px;background:#000;border-radius:8px}}
-  pre{{max-height:520px;overflow:auto;background:#111;color:#eee;padding:12px;border-radius:8px;min-width:420px}}
-  .pill{{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef;margin-left:8px}}
-</style>
-<h1>Job <code>{job_id}</code> <span id="badge" class="pill">waiting…</span></h1>
-<div class="row">
-  <div>
-    <video id="vid" controls muted playsinline></video>
-    <div style="margin-top:8px">
-      <button onclick="forcePoll()">Refresh now</button>
-      <a id="dump" target="_blank">Open full event dump</a>
-    </div>
-  </div>
-  <pre id="log"></pre>
-</div>
-<script>
-const job  = {json.dumps(job_id)};
-const base = location.origin;
-
-const logEl = document.getElementById('log');
-const vid   = document.getElementById('vid');
-const badge = document.getElementById('badge');
-const dumpA = document.getElementById('dump');
-dumpA.href  = `${{base}}/progress/${{job}}/dump`;
-
-let lastSeg = -1;
-let lastCount = 0;
-
-async function poll() {{
-  try {{
-    const st = await fetch(`${{base}}/status/${{job}}`).then(r => r.json());
-    badge.textContent = st.last_type ? st.last_type : "waiting…";
-
-    if ((st.events || 0) !== lastCount) {{
-      lastCount = st.events || 0;
-
-      const dump = await fetch(`${{base}}/progress/${{job}}/dump`).then(r => r.json());
-      logEl.textContent = JSON.stringify(dump, null, 2);
-
-      const evts = dump && dump.events ? dump.events : [];
-      const latest = evts.length ? evts[evts.length - 1] : {{}};
-
-      if (latest && latest.type === "segment_start" && typeof latest.seg === "number" && latest.url) {{
-        if (latest.seg !== lastSeg) {{
-          lastSeg = latest.seg;
-          vid.src = latest.url;
-          try {{ await vid.play(); }} catch (e) {{}}
-        }}
-      }}
-    }}
-  }} catch (e) {{
-    badge.textContent = "error";
-  }}
-}}
-
-function forcePoll() {{ lastCount = -1; poll(); }}
-setInterval(poll, 1000);
-poll();
-</script>
-""")
-@app.get("/easy")
-def easy():
-    # Simple HTML page that runs the full pipeline from the browser
-    return HTMLResponse(f"""
-<!doctype html><meta charset="utf-8"/><title>ScoutIQO – Easy Runner</title>
-<style>
-  body{{font-family:system-ui;background:#0b1320;color:#e9eef6;display:grid;place-items:center;min-height:100vh;margin:0}}
-  .card{{width:min(860px,90vw);background:#101a2d;padding:24px;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.35)}}
-  h1{{margin:.2rem 0 1rem;font-size:1.4rem}}
-  label{{display:block;margin:.7rem 0 .25rem;color:#a9b3c7}}
-  input,select{{width:100%;padding:.6rem .75rem;border-radius:10px;border:1px solid #1e2a44;background:#0c1426;color:#e9eef6}}
-  .row{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
-  button{{margin-top:16px;background:#00c2a8;border:0;color:#04121b;
-          padding:.7rem 1rem;border-radius:999px;font-weight:700;cursor:pointer}}
-  .hint{{font-size:.9rem;color:#8fa0b8;margin-top:8px}}
-  .ok{{display:inline-block;padding:4px 10px;border-radius:999px;background:#123e34;color:#66f0d5;margin-left:8px}}
-</style>
-<div class="card">
-  <h1>ScoutIQO – Easy Runner <span class="ok">BASE: {PUBLIC_BASE_URL}</span></h1>
-  <form action="/easy" method="post" enctype="multipart/form-data">
-    <label>Video file (.mp4)</label>
-    <input type="file" name="file" accept="video/mp4" required>
-
-    <div class="row">
-      <div>
-        <label>Segment seconds</label>
-        <input type="number" name="segment_seconds" value="12" min="4" max="60" />
-      </div>
-      <div>
-        <label>How many segments to analyze</label>
-        <input type="number" name="limit_segments" value="3" min="1" max="20" />
-      </div>
-    </div>
-
-    <div class="row">
-      <div>
-        <label>Preset</label>
-        <select name="preset">
-          <option value="fast" selected>fast</option>
-          <option value="normal">normal</option>
-        </select>
-      </div>
-      <div>
-        <label>Workers</label>
-        <input type="number" name="workers" value="2" min="1" max="8" />
-      </div>
-    </div>
-
-    <div class="row">
-      <div>
-        <label>Simulate</label>
-        <select name="simulate">
-          <option value="true" selected>true (quick smoke test)</option>
-          <option value="false">false (real run)</option>
-        </select>
-      </div>
-      <div>
-        <label>Fast segmentation</label>
-        <select name="fast">
-          <option value="1" selected>copy-only (fast)</option>
-          <option value="0">transcode (safer)</option>
-        </select>
-      </div>
-    </div>
-
-    <button type="submit">Run analysis</button>
-    <div class="hint">This page: uploads → segments → uploads to Supabase → launches RunPod → redirects to monitor.</div>
-  </form>
-</div>
-""")
-
-@app.post("/easy")
-async def easy_run(
-    file: UploadFile = File(...),
-    segment_seconds: int = Form(12),
-    fast: int = Form(1),
-    limit_segments: int = Form(3),
-    preset: str = Form("fast"),
-    workers: int = Form(2),
-    simulate: str = Form("true"),
-):
-    if not RUNPOD_ENDPOINT:
-        raise HTTPException(500, "RUNPOD_ENDPOINT not set")
-
-    # 1) Save upload to temp
-    suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
-    tmp_in = tempfile.mktemp(suffix=suffix)
-    with open(tmp_in, "wb") as f:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
-
-    # 2) Segment locally
-    job_up = f"up_{uuid.uuid4().hex[:8]}"
-    seg_paths = (
-        segment_copy_only_local(tmp_in, seg_seconds=segment_seconds, job_id=job_up)
-        if fast else
-        transcode_and_segment_local(tmp_in, seg_seconds=segment_seconds, job_id=job_up)
-    )
-
-    # 3) Upload segments to Supabase
-    signed_urls: List[str] = []
-    for p in seg_paths:
-        object_key = f"jobs/{job_up}/{p.name}"
-        info = supabase_put_file(str(p), object_key)
-        signed_urls.append(info["signed_url"])
-
-    # limit segments for quick test
-    signed_urls = signed_urls[: max(1, min(limit_segments, len(signed_urls)))]
-
-    # cleanup local temps
-    try:
-        Path(tmp_in).unlink(missing_ok=True)
-        for p in seg_paths:
-            p.unlink(missing_ok=True)
-        if seg_paths:
-            seg_paths[0].parent.rmdir()
-    except Exception:
-        pass
-
-    # 4) Launch RunPod (with simulate toggle support)
-    job_id = str(uuid.uuid4())[:8]
-    payload = {
-        "job_id": job_id,
-        "segment_urls": signed_urls,
-        "callback_url": f"{PUBLIC_BASE_URL}/progress/{job_id}",
-        "preset": preset or "fast",
-        "workers": int(workers or 2),
-        "make_overlay": True,
-        "simulate": (str(simulate).lower() == "true"),
-    }
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_API_KEY}"}
-    r = requests.post(RUNPOD_ENDPOINT, headers=headers, json={"input": payload}, timeout=60)
-    if r.status_code >= 300:
-        raise HTTPException(500, f"RunPod launch failed: {r.text}")
-
-    # 5) Redirect to monitor
-    return HTMLResponse(f"""
-<!doctype html><meta charset="utf-8"/><title>Launched {job_id}</title>
-<body style="font-family:system-ui;background:#0b1320;color:#e9eef6">
-  <div style="display:grid;place-items:center;min-height:100vh">
-    <div style="background:#101a2d;padding:22px 28px;border-radius:14px">
-      <h2 style="margin:0 0 10px">Launched job <code>{job_id}</code></h2>
-      <p>Segments: {len(signed_urls)} | simulate: {str(simulate).lower()}</p>
-      <p><a style="color:#66f0d5" href="/monitor/{job_id}">Open monitor</a></p>
-      <script>setTimeout(()=>location.href="/monitor/{job_id}",600);</script>
-    </div>
-  </div>
-</body>
-""")
-
-@app.websocket("/ws/{job_id}")
-async def ws(job_id: str, websocket: WebSocket):
-    await websocket.accept()
-    channels.setdefault(job_id, []).append(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
+        # Tracking data
+        self.players = []
+        self.ball = None
+        self.events = []
+        self.metrics = {}
+        
+        # Training integration
+        self.training_enabled = True
+        
+    async def initialize(self):
+        """Initialize video capture and AI models"""
         try:
-            channels[job_id].remove(websocket)
-        except Exception:
-            pass
+            # Import AI components
+            from detector import Detector
+            from tracker_players import PlayerTracker
+            from ball_tracker import BallTracker
+            from team_assign import TeamAssigner
+            
+            # Import Phase 1 & 2 components
+            from calibration import HomographyEstimator
+            from metrics.physical import PhysicalMetricsManager
+            
+            # Import adaptive filtering components
+            from calibration.pose_filter import CameraPoseFilter
+            from tracking.world_tracker import WorldTrackerManager
+            from tracking.ball_physics import BallPhysicsTracker
+            from models.confidence_heads import (
+                PlayerConfidenceEstimator, 
+                BallConfidenceEstimator,
+                CameraPoseConfidenceEstimator
+            )
+            
+            # Import Phoenix adaptive monocular system
+            from analyzers.phoenix_runner import PhoenixRunner
+            
+            # Initialize video capture
+            self.cap = cv2.VideoCapture(self.video_path)
+            if not self.cap.isOpened():
+                raise RuntimeError(f"Failed to open video: {self.video_path}")
+            
+            self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
+            self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            # Initialize AI models
+            self.detector = Detector({"weights_bucket": "local", "weights_path": "yolov8n.pt"})
+            self.tracker = PlayerTracker({"max_age": 30, "min_hits": 3})
+            self.ball_tracker = BallTracker({"min_conf": 0.10, "class_id": 32})
+            self.team_assigner = TeamAssigner()
+            
+            # Initialize Phase 1: Camera pose and world mapping
+            self.homography_estimator = HomographyEstimator()
+            self.current_homography = None
+            
+            # Initialize Phase 2: Physical metrics
+            self.physical_metrics = PhysicalMetricsManager()
+            
+            # Initialize adaptive filtering components
+            self.pose_filter = CameraPoseFilter()
+            self.world_tracker = WorldTrackerManager()
+            self.ball_physics_tracker = BallPhysicsTracker()
+            
+            # Initialize confidence estimators
+            self.player_confidence_estimator = PlayerConfidenceEstimator()
+            self.ball_confidence_estimator = BallConfidenceEstimator()
+            self.camera_pose_confidence_estimator = CameraPoseConfidenceEstimator()
+            
+            # Initialize Phoenix adaptive monocular system
+            self.phoenix_runner = PhoenixRunner(device="cpu")
+            
+            # Set camera intrinsics (will be estimated or provided)
+            K_default = np.array([
+                [1000, 0, 640],
+                [0, 1000, 360],
+                [0, 0, 1]
+            ], dtype=np.float32)
+            self.phoenix_runner.set_camera_intrinsics(K_default)
+            
+            return True
+        except Exception as e:
+            print(f"Failed to initialize analyzer: {e}")
+            return False
+    
+    async def process_frame(self):
+        """Process a single frame and return tracking data with world coordinates"""
+        if not self.cap or not self.cap.isOpened():
+            return None
+        
+        ret, frame = self.cap.read()
+        if not ret:
+            return None
+        
+        self.current_frame += 1
+        timestamp = self.current_frame / self.fps
+        
+        try:
+            # Run detection first
+            detections = self.detector.infer(frame)
+            
+            # PHOENIX ADAPTIVE MONOCULAR MODE
+            # Use sliding window bundle optimization for true adaptive tracking
+            phoenix_detections = {
+                "players": [],
+                "ball": None
+            }
+            
+            # Convert detections to Phoenix format
+            player_dets = {"xyxy": [], "conf": [], "cls": []}
+            ball_dets = {"xyxy": [], "conf": [], "cls": []}
+            
+            for i, (x1, y1, x2, y2) in enumerate(detections.get("xyxy", [])):
+                conf = detections.get("conf", [0.0])[i]
+                cls = detections.get("cls", [-1])[i]
+                
+                if cls == 0:  # person
+                    player_dets["xyxy"].append([x1, y1, x2, y2])
+                    player_dets["conf"].append(conf)
+                    player_dets["cls"].append(cls)
+                    
+                    # Add to Phoenix detections
+                    phoenix_detections["players"].append({
+                        "bbox": [x1, y1, x2, y2],
+                        "conf": conf
+                    })
+                elif cls == 32:  # sports ball
+                    ball_dets["xyxy"].append([x1, y1, x2, y2])
+                    ball_dets["conf"].append(conf)
+                    ball_dets["cls"].append(cls)
+                    
+                    # Add to Phoenix detections
+                    phoenix_detections["ball"] = {
+                        "bbox": [x1, y1, x2, y2],
+                        "conf": conf
+                    }
+            
+            # Process with Phoenix system
+            phoenix_result = self.phoenix_runner.process_frame(frame, phoenix_detections)
+            
+            # Submit window data for online training if available
+            if hasattr(self, 'session_id') and phoenix_result.get("phoenix_optimized", False):
+                await self._submit_training_window(phoenix_detections, frame)
+            
+            # Use Phoenix results if available, otherwise fall back to adaptive filtering
+            if phoenix_result.get("phoenix_optimized", False):
+                return phoenix_result
+            
+            # FALLBACK: ADAPTIVE CAMERA POSE FILTERING
+            # Update pose filter every frame for smooth tracking
+            self.current_homography = self.pose_filter.update(frame, dt=1.0/self.fps)
+            
+            # Get pose confidence
+            pose_confidence = self.pose_filter.get_confidence()
+            
+            # Track players (legacy tracker for pixel coordinates)
+            self.players = self.tracker.update(player_dets) or []
+            
+            # Track ball (legacy tracker for pixel coordinates)
+            self.ball = self.ball_tracker.update(ball_dets)
+            
+            # Team assignment
+            if self.players:
+                self.team_assigner.observe(
+                    frame,
+                    [{"id": p["id"], "x1": p["x1"], "y1": p["y1"], "x2": p["x2"], "y2": p["y2"]} for p in self.players]
+                )
+            
+            # ADAPTIVE WORLD-SPACE TRACKING
+            # Update world tracker with detections
+            world_tracks = self.world_tracker.update(
+                self.players, 
+                self.current_homography, 
+                timestamp, 
+                dt=1.0/self.fps
+            )
+            
+            # Update ball physics tracker
+            ball_world_state = self.ball_physics_tracker.update(
+                self.ball,
+                self.current_homography,
+                timestamp,
+                dt=1.0/self.fps
+            )
+            
+            # Convert to enhanced format with confidence scores
+            players_with_world_coords = []
+            for track in world_tracks:
+                # Get confidence scores for this player
+                player_bbox = None
+                for p in self.players:
+                    if p["id"] == track["global_id"]:
+                        player_bbox = (p["x1"], p["y1"], p["x2"], p["y2"])
+                        break
+                
+                confidence_scores = {}
+                if player_bbox is not None:
+                    try:
+                        # Extract player crop for confidence estimation
+                        x1, y1, x2, y2 = [int(coord) for coord in player_bbox]
+                        player_crop = frame[y1:y2, x1:x2]
+                        
+                        if player_crop.size > 0:
+                            confidence_scores = self.player_confidence_estimator.estimate_confidence(
+                                player_crop, player_bbox, {
+                                    "speed": track["speed_mps"],
+                                    "acceleration": 0.0,  # Could calculate from history
+                                    "direction_change": 0.0,
+                                    "prediction_error": 0.0
+                                }
+                            )
+                    except Exception as e:
+                        print(f"Player confidence estimation failed: {e}")
+                        confidence_scores = {"combined": 0.5}
+                
+                players_with_world_coords.append({
+                    "id": track["global_id"],
+                    "position_px": track.get("position_px", [0, 0]),
+                    "position_world": track["position"],
+                    "velocity_world": track["velocity"],
+                    "speed_mps": track["speed_mps"],
+                    "speed_kmh": track["speed_kmh"],
+                    "team": self.team_assigner.get_team(track["global_id"]),
+                    "bbox": track.get("bbox", [0, 0, 0, 0]),
+                    "confidence_scores": confidence_scores,
+                    "visibility_score": track["visibility_score"]
+                })
+            
+            # Enhanced ball data with physics
+            ball_data = None
+            if ball_world_state:
+                ball_confidence_scores = {}
+                if self.ball:
+                    try:
+                        # Extract ball crop for confidence estimation
+                        x1, y1, x2, y2 = [int(coord) for coord in [self.ball["x1"], self.ball["y1"], self.ball["x2"], self.ball["y2"]]]
+                        ball_crop = frame[y1:y2, x1:x2]
+                        
+                        if ball_crop.size > 0:
+                            ball_confidence_scores = self.ball_confidence_estimator.estimate_confidence(
+                                ball_crop, (x1, y1, x2, y2)
+                            )
+                    except Exception as e:
+                        print(f"Ball confidence estimation failed: {e}")
+                        ball_confidence_scores = {"combined": 0.5}
+                
+                ball_data = {
+                    "position_px": [self.ball["x1"], self.ball["y1"], self.ball["x2"], self.ball["y2"]] if self.ball else None,
+                    "position_world": ball_world_state["position"],
+                    "velocity_world": ball_world_state["velocity"],
+                    "speed_mps": ball_world_state["speed_mps"],
+                    "speed_kmh": ball_world_state["speed_kmh"],
+                    "height": ball_world_state["height"],
+                    "in_flight": ball_world_state["in_flight"],
+                    "confidence": self.ball.get("conf", 0.0) if self.ball else 0.0,
+                    "confidence_scores": ball_confidence_scores,
+                    "visibility_score": ball_world_state["visibility_score"]
+                }
+            
+            # Calculate enhanced metrics
+            self.metrics = self._calculate_enhanced_metrics()
+            
+            return {
+                "frame": self.current_frame,
+                "timestamp": timestamp,
+                "players": players_with_world_coords,
+                "ball": ball_data,
+                "homography_available": self.current_homography is not None,
+                "pose_confidence": pose_confidence,
+                "adaptive_tracking": True,
+                "metrics": self.metrics
+            }
+            
+        except Exception as e:
+            print(f"Error processing frame {self.current_frame}: {e}")
+            return None
+    
+    def _calculate_enhanced_metrics(self):
+        """Calculate enhanced real-time metrics with physical data"""
+        base_metrics = {
+            "players_count": len(self.players),
+            "ball_detected": self.ball is not None,
+            "frame_rate": self.fps,
+            "progress": (self.current_frame / self.total_frames) * 100 if self.total_frames > 0 else 0,
+            "homography_available": self.current_homography is not None
+        }
+        
+        # Add physical metrics if available
+        if hasattr(self, 'physical_metrics'):
+            all_physical = self.physical_metrics.get_all_metrics()
+            
+            # Team assignments for aggregation
+            team_assignments = {}
+            for p in self.players:
+                team_assignments[p["id"]] = self.team_assigner.get_team(p["id"])
+            
+            team_metrics = self.physical_metrics.get_team_metrics(team_assignments)
+            
+            base_metrics.update({
+                "physical_metrics": all_physical,
+                "team_metrics": team_metrics,
+                "total_distance_km": sum(m["distance_km"] for m in all_physical.values()),
+                "max_speed_kmh": max((m["max_speed_kmh"] for m in all_physical.values()), default=0.0),
+                "total_sprints": sum(m["sprint_bursts"] for m in all_physical.values())
+            })
+        
+        return base_metrics
+    
+    async def _submit_training_window(self, detections, frame):
+        """Submit window data for online training"""
+        try:
+            # Prepare training data
+            training_data = {
+                "init": {
+                    "rvec": np.zeros((25, 3)),  # Window size
+                    "tvec": np.zeros((25, 3)),
+                    "players_xy": np.random.uniform(10, 95, (25, 22, 2)),  # 22 players
+                    "ball_xyz": np.zeros((25, 3)),
+                    "ball_v": np.zeros((25, 3))
+                },
+                "meas": {
+                    "u_players": np.zeros((25, 22, 2)),  # Player measurements
+                    "u_ball": [None] * 25,  # Ball measurements
+                    "h_ball": [None] * 25   # Ball height measurements
+                },
+                "feats": {
+                    "players": np.random.randn(25 * 22, 64),  # Player features
+                    "ball_xy": np.random.randn(25, 64),       # Ball features
+                    "ball_h": np.random.randn(25, 64),        # Ball height features
+                    "field": np.random.randn(25, 64)          # Field features
+                },
+                "pitch_pts_world": self.phoenix_runner.optimizer.pitch_keypoints_world,
+                "pitch_pts_img": [None] * 25,  # Would be populated from field detection
+                "dt": 1.0 / self.fps
+            }
+            
+            # Submit to training system
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"http://127.0.0.1:8080/train/window/{self.session_id}",
+                    json=training_data
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        print(f"Submitted training window: {result}")
+            
+        except Exception as e:
+            print(f"Failed to submit training window: {e}")
+    
+    async def start_analysis(self):
+        """Start the live analysis loop"""
+        self.is_running = True
+        
+        while self.is_running and self.cap and self.cap.isOpened():
+            tracking_data = await self.process_frame()
+            
+            if tracking_data:
+                # Broadcast to all connected WebSockets
+                await self._broadcast_data(tracking_data)
+            
+            # Control frame rate
+            await asyncio.sleep(1.0 / self.fps)
+        
+        await self.cleanup()
+    
+    async def _broadcast_data(self, data: dict):
+        """Broadcast tracking data to all connected WebSockets"""
+        if self.session_id in active_websockets:
+            disconnected = []
+            for websocket in active_websockets[self.session_id]:
+                try:
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        await websocket.send_json(data)
+                    else:
+                        disconnected.append(websocket)
+                except:
+                    disconnected.append(websocket)
+            
+            # Remove disconnected WebSockets
+            for ws in disconnected:
+                active_websockets[self.session_id].remove(ws)
+    
+    async def cleanup(self):
+        """Clean up resources"""
+        if self.cap:
+            self.cap.release()
+        self.is_running = False
+
+# Live analysis endpoints
+@app.post("/live/upload")
+async def upload_video_for_live_analysis(file: UploadFile = File(...), bg: BackgroundTasks = BackgroundTasks()):
+    """Upload video for live analysis"""
+    session_id = f"live_{int(time.time())}"
+    
+    # Save uploaded video
+    video_path = Path(FILES_ROOT) / "live" / f"{session_id}.mp4"
+    video_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(video_path, "wb") as buffer:
+        content = await file.read()
+        buffer.write(content)
+    
+    # Initialize analyzer
+    analyzer = LiveVideoAnalyzer(str(video_path), session_id)
+    success = await analyzer.initialize()
+    
+    if not success:
+        return JSONResponse({"error": "Failed to initialize analyzer"}, status_code=500)
+    
+    # Store session
+    live_sessions[session_id] = {
+        "analyzer": analyzer,
+        "video_path": str(video_path),
+        "upload_time": time.time(),
+        "status": "ready"
+    }
+    
+    return JSONResponse({
+        "session_id": session_id,
+        "status": "ready",
+        "message": "Video uploaded successfully. Start analysis with /live/start/{session_id}"
+    })
+
+@app.post("/live/start/{session_id}")
+async def start_live_analysis(session_id: str, bg: BackgroundTasks = BackgroundTasks()):
+    """Start live analysis of uploaded video"""
+    if session_id not in live_sessions:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    
+    session = live_sessions[session_id]
+    analyzer = session["analyzer"]
+    
+    if session["status"] == "running":
+        return JSONResponse({"error": "Analysis already running"}, status_code=400)
+    
+    # Start analysis in background
+    bg.add_task(analyzer.start_analysis)
+    session["status"] = "running"
+    
+    return JSONResponse({
+        "session_id": session_id,
+        "status": "running",
+        "message": "Live analysis started. Connect to WebSocket at /live/stream/{session_id}"
+    })
+
+@app.websocket("/live/stream/{session_id}")
+async def live_data_stream(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for live tracking data"""
+    await websocket.accept()
+    
+    if session_id not in live_sessions:
+        await websocket.close(code=1008, reason="Session not found")
+        return
+    
+    # Add WebSocket to active connections
+    if session_id not in active_websockets:
+        active_websockets[session_id] = []
+    active_websockets[session_id].append(websocket)
+    
+    try:
+        # Keep connection alive and send periodic updates
+        while True:
+            if session_id in live_sessions:
+                session = live_sessions[session_id]
+                if session["status"] == "running":
+                    # Send session info
+                    await websocket.send_json({
+                        "type": "session_info",
+                        "session_id": session_id,
+                        "status": session["status"],
+                        "timestamp": time.time()
+                    })
+                else:
+                    await websocket.send_json({
+                        "type": "status",
+                        "status": session["status"],
+                        "message": "Analysis not running"
+                    })
+            else:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Session not found"
+                })
+                break
+            
+            await asyncio.sleep(1)  # Send updates every second
+            
+    except WebSocketDisconnect:
+        pass
+    finally:
+        # Remove WebSocket from active connections
+        if session_id in active_websockets:
+            if websocket in active_websockets[session_id]:
+                active_websockets[session_id].remove(websocket)
+
+    @app.get("/live/status/{session_id}")
+    async def get_live_status(session_id: str):
+        """Get status of live analysis session"""
+        if session_id not in live_sessions:
+            return JSONResponse({"error": "Session not found"}, status_code=404)
+        
+        session = live_sessions[session_id]
+        analyzer = session["analyzer"]
+        
+        # Get enhanced status with adaptive metrics
+        status_data = {
+            "session_id": session_id,
+            "status": session["status"],
+            "current_frame": analyzer.current_frame,
+            "total_frames": analyzer.total_frames,
+            "fps": analyzer.fps,
+            "progress": (analyzer.current_frame / analyzer.total_frames) * 100 if analyzer.total_frames > 0 else 0,
+            "connected_clients": len(active_websockets.get(session_id, [])),
+            "adaptive_tracking": True,
+            "homography_available": analyzer.current_homography is not None,
+            "pose_confidence": analyzer.pose_filter.get_confidence() if hasattr(analyzer, 'pose_filter') else 0.0
+        }
+        
+        # Add physical metrics if available
+        if hasattr(analyzer, 'physical_metrics'):
+            all_physical = analyzer.physical_metrics.get_all_metrics()
+            status_data.update({
+                "total_distance_km": sum(m["distance_km"] for m in all_physical.values()),
+                "max_speed_kmh": max((m["max_speed_kmh"] for m in all_physical.values()), default=0.0),
+                "total_sprints": sum(m["sprint_bursts"] for m in all_physical.values())
+            })
+        
+        return JSONResponse(status_data)
+
+@app.post("/live/stop/{session_id}")
+async def stop_live_analysis(session_id: str):
+    """Stop live analysis"""
+    if session_id not in live_sessions:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    
+    session = live_sessions[session_id]
+    analyzer = session["analyzer"]
+    
+    analyzer.is_running = False
+    session["status"] = "stopped"
+    
+    return JSONResponse({
+        "session_id": session_id,
+        "status": "stopped",
+        "message": "Live analysis stopped"
+    })

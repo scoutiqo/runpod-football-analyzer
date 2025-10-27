@@ -1,0 +1,16 @@
+# ScoutIQO Analyzer Environment Variables
+# Copy this to .env file
+
+# Server Configuration
+PUBLIC_BASE_URL=http://127.0.0.1:8080
+CALLBACK_SECRET=your-secret-key-here
+
+# RunPod Configuration (optional - for real analysis)
+RUNPOD_ENDPOINT=https://api.runpod.ai/v2/<your-endpoint-id>/run
+RUNPOD_API_KEY=your-runpod-api-key-here
+
+# Supabase Configuration (optional - for file storage)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+SUPABASE_BUCKET=scoutiqo
+

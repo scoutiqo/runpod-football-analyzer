@@ -143,6 +143,20 @@ def project_px_to_m(H: np.ndarray, pts_xy: np.ndarray) -> np.ndarray:
     p = p[:, :2] / np.clip(p[:, 2:3], 1e-6, None)
     return p
 
+def image_to_field(H: np.ndarray, x: float, y: float) -> Optional[Tuple[float, float]]:
+    """
+    Convert single image pixel (x, y) to field coordinates (meters).
+    Returns (x_m, y_m) or None if H is None.
+    """
+    if H is None:
+        return None
+    
+    pts = np.array([[x, y]], dtype=np.float32)
+    result = project_px_to_m(H, pts)
+    if len(result) > 0:
+        return (float(result[0, 0]), float(result[0, 1]))
+    return None
+
 def histogram_cut_metric(frame_bgr: np.ndarray) -> np.ndarray:
     """
     Return L2-normalized concatenated HSV hist as a vector.

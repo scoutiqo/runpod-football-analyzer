@@ -28,6 +28,7 @@ python-multipart==0.0.9
 python-dotenv==1.0.1
 supabase==2.6.0
 pydantic>=2.5,<3
+aiohttp==3.9.1
 
 # Mediapipe FIX (was 0.10.0 → update to latest)
 mediapipe==0.10.21
