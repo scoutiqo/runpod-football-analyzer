@@ -20,5 +20,6 @@ from ultralytics import YOLO
 YOLO('yolov8n.pt')
 PY
 
-# start RunPod worker (matches handler.py -> def handler(event))
-CMD ["python", "-m", "runpod.serverless.worker", "--handler-path", "handler.py"]
+ENV PYTHONUNBUFFERED=1
+ENV RUNPOD_DEBUG_LEVEL=DEBUG
+ENTRYPOINT ["python", "-m", "runpod.serverless.worker", "--handler-path", "handler.py"]
