@@ -1,23 +1,22 @@
 import base64
 import os
-import json
-import cv2
 from openai import OpenAI
 
-# --- CONFIG ---
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+# You need to set this in your .env file
+# export OPENAI_API_KEY="sk-..."
+api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=api_key) if api_key else None
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
-def ask_oracle(image_path, prompt):
+def ask_chatgpt_vision(image_path, prompt):
     """
-    Sends a frame to ChatGPT-4o Vision for expert analysis.
+    Sends an image to GPT-4o to get a human-level label.
     """
-    if not OPENAI_API_KEY:
-        print("❌ No API Key found.")
+    if not client:
+        print("❌ SKIPPING ORACLE: No OpenAI API Key found.")
         return None
 
     base64_image = encode_image(image_path)
@@ -39,15 +38,9 @@ def ask_oracle(image_path, prompt):
                     ],
                 }
             ],
-            max_tokens=300,
+            max_tokens=50,
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"❌ Oracle Error: {e}")
         return None
-
-# --- INTEGRATION TEST ---
-if __name__ == "__main__":
-    # Test with a dummy frame if one exists
-    print("🔮 Oracle System Initialized.")
-
