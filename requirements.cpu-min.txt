@@ -1,0 +1,14 @@
+torch==2.3.1+cpu
+torchvision==0.18.1+cpu
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+
+ultralytics==8.2.103
+supervision==0.20.0
+
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+scipy==1.12.0
+scikit-learn==1.4.2
+hmmlearn==0.3.2
+filterpy==1.4.5
+lapx==0.5.9

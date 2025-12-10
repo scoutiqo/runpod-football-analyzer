@@ -1,0 +1,538 @@
+[
+  {
+    "frame": 17,
+    "start": 16,
+    "end": 18,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 20,
+    "start": 19,
+    "end": 21,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 23,
+    "start": 22,
+    "end": 24,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 26,
+    "start": 25,
+    "end": 27,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 35,
+    "start": 34,
+    "end": 36,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 38,
+    "start": 37,
+    "end": 39,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 41,
+    "start": 40,
+    "end": 42,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 50,
+    "start": 49,
+    "end": 51,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 56,
+    "start": 55,
+    "end": 57,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 60,
+    "start": 59,
+    "end": 61,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 71,
+    "start": 70,
+    "end": 72,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 75,
+    "start": 73,
+    "end": 77,
+    "label": "duel",
+    "confidence": 0.827,
+    "team": "unknown"
+  },
+  {
+    "frame": 82,
+    "start": 81,
+    "end": 83,
+    "label": "duel",
+    "confidence": 0.89,
+    "team": "unknown"
+  },
+  {
+    "frame": 88,
+    "start": 87,
+    "end": 89,
+    "label": "duel",
+    "confidence": 0.84,
+    "team": "unknown"
+  },
+  {
+    "frame": 100,
+    "start": 99,
+    "end": 101,
+    "label": "duel",
+    "confidence": 0.891,
+    "team": "unknown"
+  },
+  {
+    "frame": 137,
+    "start": 136,
+    "end": 138,
+    "label": "pass",
+    "confidence": 0.658,
+    "team": "unknown"
+  },
+  {
+    "frame": 140,
+    "start": 139,
+    "end": 141,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 143,
+    "start": 142,
+    "end": 144,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 146,
+    "start": 145,
+    "end": 147,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 161,
+    "start": 157,
+    "end": 165,
+    "label": "pass",
+    "confidence": 0.696,
+    "team": "unknown"
+  },
+  {
+    "frame": 204,
+    "start": 203,
+    "end": 206,
+    "label": "pass",
+    "confidence": 0.755,
+    "team": "unknown"
+  },
+  {
+    "frame": 235,
+    "start": 234,
+    "end": 236,
+    "label": "pass",
+    "confidence": 0.743,
+    "team": "unknown"
+  },
+  {
+    "frame": 238,
+    "start": 237,
+    "end": 239,
+    "label": "pass",
+    "confidence": 0.746,
+    "team": "unknown"
+  },
+  {
+    "frame": 247,
+    "start": 246,
+    "end": 248,
+    "label": "pass",
+    "confidence": 0.739,
+    "team": "unknown"
+  },
+  {
+    "frame": 268,
+    "start": 267,
+    "end": 269,
+    "label": "pass",
+    "confidence": 0.718,
+    "team": "unknown"
+  },
+  {
+    "frame": 271,
+    "start": 270,
+    "end": 272,
+    "label": "pass",
+    "confidence": 0.755,
+    "team": "unknown"
+  },
+  {
+    "frame": 274,
+    "start": 273,
+    "end": 275,
+    "label": "pass",
+    "confidence": 0.721,
+    "team": "unknown"
+  },
+  {
+    "frame": 287,
+    "start": 286,
+    "end": 288,
+    "label": "pass",
+    "confidence": 0.664,
+    "team": "unknown"
+  },
+  {
+    "frame": 305,
+    "start": 304,
+    "end": 306,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 318,
+    "start": 317,
+    "end": 319,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 326,
+    "start": 325,
+    "end": 327,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 352,
+    "start": 350,
+    "end": 354,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 356,
+    "start": 355,
+    "end": 357,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 359,
+    "start": 358,
+    "end": 360,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 362,
+    "start": 361,
+    "end": 363,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 365,
+    "start": 364,
+    "end": 366,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 386,
+    "start": 385,
+    "end": 387,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 398,
+    "start": 397,
+    "end": 399,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 401,
+    "start": 400,
+    "end": 402,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 419,
+    "start": 418,
+    "end": 420,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 440,
+    "start": 439,
+    "end": 442,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 446,
+    "start": 445,
+    "end": 447,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 449,
+    "start": 448,
+    "end": 450,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 452,
+    "start": 451,
+    "end": 453,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 482,
+    "start": 481,
+    "end": 484,
+    "label": "pass",
+    "confidence": 0.615,
+    "team": "unknown"
+  },
+  {
+    "frame": 523,
+    "start": 522,
+    "end": 524,
+    "label": "pass",
+    "confidence": 0.737,
+    "team": "unknown"
+  },
+  {
+    "frame": 528,
+    "start": 525,
+    "end": 531,
+    "label": "pass",
+    "confidence": 0.637,
+    "team": "unknown"
+  },
+  {
+    "frame": 534,
+    "start": 532,
+    "end": 537,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 551,
+    "start": 550,
+    "end": 552,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 571,
+    "start": 568,
+    "end": 574,
+    "label": "pass",
+    "confidence": 0.655,
+    "team": "unknown"
+  },
+  {
+    "frame": 599,
+    "start": 598,
+    "end": 600,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 614,
+    "start": 613,
+    "end": 615,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 617,
+    "start": 616,
+    "end": 618,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 620,
+    "start": 619,
+    "end": 621,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 623,
+    "start": 622,
+    "end": 624,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 642,
+    "start": 640,
+    "end": 645,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 657,
+    "start": 656,
+    "end": 658,
+    "label": "pass",
+    "confidence": 0.74,
+    "team": "unknown"
+  },
+  {
+    "frame": 663,
+    "start": 662,
+    "end": 664,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 676,
+    "start": 675,
+    "end": 677,
+    "label": "pass",
+    "confidence": 0.743,
+    "team": "unknown"
+  },
+  {
+    "frame": 684,
+    "start": 683,
+    "end": 685,
+    "label": "pass",
+    "confidence": 0.69,
+    "team": "unknown"
+  },
+  {
+    "frame": 693,
+    "start": 691,
+    "end": 695,
+    "label": "pass",
+    "confidence": 0.722,
+    "team": "unknown"
+  },
+  {
+    "frame": 710,
+    "start": 709,
+    "end": 711,
+    "label": "pass",
+    "confidence": 0.653,
+    "team": "unknown"
+  },
+  {
+    "frame": 716,
+    "start": 715,
+    "end": 717,
+    "label": "pass",
+    "confidence": 0.669,
+    "team": "unknown"
+  },
+  {
+    "frame": 719,
+    "start": 718,
+    "end": 720,
+    "label": "pass",
+    "confidence": 0.603,
+    "team": "unknown"
+  },
+  {
+    "frame": 722,
+    "start": 721,
+    "end": 723,
+    "label": "duel",
+    "confidence": 0.688,
+    "team": "unknown"
+  },
+  {
+    "frame": 734,
+    "start": 733,
+    "end": 736,
+    "label": "duel",
+    "confidence": 0.769,
+    "team": "unknown"
+  },
+  {
+    "frame": 738,
+    "start": 737,
+    "end": 739,
+    "label": "duel",
+    "confidence": 0.76,
+    "team": "unknown"
+  }
+]

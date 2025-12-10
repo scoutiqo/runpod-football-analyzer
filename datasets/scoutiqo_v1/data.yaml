@@ -1,0 +1,8 @@
+path: /workspace/runpod-football-analyzer/datasets/scoutiqo_v1
+train: /workspace/runpod-football-analyzer/datasets/scoutiqo_v1/images/train
+val:   /workspace/runpod-football-analyzer/datasets/scoutiqo_v1/images/val
+names:
+  0: player
+  1: referee
+  2: goalkeeper
+  3: ball

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ScoutIQO Event Viewer (learned)</title>
+  <style>
+    body {
+      background: #111;
+      color: #eee;
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #top {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    video {
+      max-width: 720px;
+      outline: 1px solid #333;
+      background: #000;
+    }
+    #info {
+      min-width: 260px;
+      padding: 12px;
+      background: #181818;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .label-pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      margin-right: 6px;
+    }
+    .label-pass { background: #14532d; color: #bbf7d0; }
+    .label-duel { background: #1d4ed8; color: #bfdbfe; }
+    .label-ball_loss { background: #7f1d1d; color: #fecaca; }
+    #debug {
+      font-family: monospace;
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 8px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h2>ScoutIQO — Learned Event Viewer (pass / duel / ball_loss)</h2>
+
+  <div id="top">
+    <video id="video" src="test_short.mp4" controls></video>
+    <div id="info">
+      <div><strong>Frame:</strong> <span id="frame">0</span></div>
+      <div><strong>Time:</strong> <span id="time">0.00s</span></div>
+      <div style="margin-top:8px;"><strong>Predicted events:</strong></div>
+      <div id="events_here" style="margin-top:4px;"></div>
+      <div id="debug"></div>
+    </div>
+  </div>
+
+  <script>
+    // Adjust if needed, but 25 is usually fine for broadcast-style clips
+    const FPS = 25;
+
+    const video = document.getElementById('video');
+    const frameSpan = document.getElementById('frame');
+    const timeSpan = document.getElementById('time');
+    const eventsDiv = document.getElementById('events_here');
+    const debugDiv = document.getElementById('debug');
+
+    let eventsByFrame = {};
+
+    function labelClass(label) {
+      if (label === 'pass') return 'label-pass';
+      if (label === 'duel') return 'label-duel';
+      if (label === 'ball_loss') return 'label-ball_loss';
+      return '';
+    }
+
+    function formatProb(p) {
+      if (typeof p !== 'number') return '';
+      return (p * 100).toFixed(1) + '%';
+    }
+
+    async function loadEvents() {
+      try {
+        const resp = await fetch('events.json');
+        const data = await resp.json();
+
+        // data is expected to be an array; each item should have label/prob and maybe frame
+        data.forEach((ev, idx) => {
+          const frame = (typeof ev.frame === 'number') ? ev.frame : idx;
+          if (!eventsByFrame[frame]) eventsByFrame[frame] = [];
+          eventsByFrame[frame].push(ev);
+        });
+
+        debugDiv.textContent = 'Loaded ' + Object.keys(eventsByFrame).length +
+          ' frames with events from events.json';
+      } catch (err) {
+        debugDiv.textContent = 'Failed to load events.json: ' + err;
+        console.error(err);
+      }
+    }
+
+    function renderFrameInfo() {
+      const currentTime = video.currentTime || 0;
+      const frame = Math.round(currentTime * FPS);
+      frameSpan.textContent = frame;
+      timeSpan.textContent = currentTime.toFixed(2) + 's';
+
+      const evs = eventsByFrame[frame] || [];
+      eventsDiv.innerHTML = '';
+
+      if (evs.length === 0) {
+        eventsDiv.textContent = '(no event at this frame)';
+        return;
+      }
+
+      evs.forEach(ev => {
+        const div = document.createElement('div');
+        const label = ev.label || ev.canonical_label || 'unknown';
+        const prob = ev.prob ?? ev.probability ?? ev.score;
+
+        const pill = document.createElement('span');
+        pill.className = 'label-pill ' + labelClass(label);
+        pill.textContent = label + (prob != null ? ' (' + formatProb(prob) + ')' : '');
+        div.appendChild(pill);
+
+        eventsDiv.appendChild(div);
+      });
+    }
+
+    video.addEventListener('timeupdate', renderFrameInfo);
+    video.addEventListener('seeked', renderFrameInfo);
+    video.addEventListener('loadedmetadata', renderFrameInfo);
+
+    loadEvents();
+  </script>
+</body>
+</html>

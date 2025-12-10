@@ -1,0 +1,135 @@
+import os, time, tempfile, subprocess, shlex, sys
+from pathlib import Path
+
+# --- Supabase client (v2 or v1 compatible) ---
+SUPABASE_URL  = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY  = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
+BUCKET_NAME   = os.environ.get("SCOUTIQO_BUCKET", "raw-videos")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY/ANON in env"); sys.exit(1)
+
+try:
+    from supabase import create_client
+    sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+except Exception as e:
+    print("❌ supabase-py not installed or failed to init:", e); sys.exit(1)
+
+def sh(cmd):
+    print("→", cmd)
+    subprocess.run(cmd, shell=True, check=True)
+
+def h264ify(src):
+    dst = src.replace(".mp4", "_h264.mp4")
+    cmd = f'ffmpeg -y -i {shlex.quote(src)} -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart {shlex.quote(dst)}'
+    sh(cmd)
+    return dst
+
+def download_to_temp(url: str) -> str:
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+    tmp.close()
+    # curl is simplest; you can switch to requests if you prefer
+    sh(f'curl -L --fail -o {shlex.quote(tmp.name)} {shlex.quote(url)}')
+    return tmp.name
+
+def run_analysis(local_in: str) -> tuple[str, str]:
+    """
+    Replace this with YOUR analyzer entrypoint.
+    Must return (tracks_path, out_video_path).
+    """
+    # Example: assume your CLI writes these two files:
+    out_dir = Path("runs/worker"); out_dir.mkdir(parents=True, exist_ok=True)
+    tracks_path = str(out_dir / "tracks.json")
+    out_mp4     = str(out_dir / "out.mp4")
+
+    # Call your analyzer. Example:
+    # python3 run_soccer.py --input local_in --export_json --output out_mp4
+    # (Adjust to your actual script/flags)
+    sh(f'python3 run_soccer.py --input {shlex.quote(local_in)} --export_json --output {shlex.quote(out_mp4)}')
+    if not Path(tracks_path).exists():
+        # many scripts write JSON elsewhere; if you already have a canonical file, point to it.
+        # Fallback: try common location
+        guess = Path("runs/json/tracks.json")
+        if guess.exists():
+            return str(guess), out_mp4
+        print("❌ tracks.json not found. Update run_analysis() to your real paths.")
+        sys.exit(2)
+    return tracks_path, out_mp4
+
+def upload_public(key: str, file_path: str, content_type: str):
+    with open(file_path, "rb") as f:
+        sb.storage.from_(BUCKET_NAME).upload(key, f, {
+            "cache-control": "3600",
+            "content-type": content_type,
+            "upsert": True
+        })
+
+def public_url(key: str) -> str:
+    return f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{key}"
+
+print("🟢 Worker started. Watching for queued jobs...")
+while True:
+    try:
+        # --- get one queued job (FIFO) ---
+        row = (
+            sb.table(os.getenv("JOBS_TABLE","jobs"))
+              .select("*")
+              .eq("status", "queued")
+              .order("created_at", desc=False)
+              .limit(1)
+              .execute()
+        )
+        jobs = getattr(row, "data", None) or (row[1] if isinstance(row, (list, tuple)) and len(row) > 1 else [])
+        if not jobs:
+            time.sleep(3)
+            continue
+
+        job = jobs[0]
+        job_id    = job["id"]
+        video_url = job["video_url"]
+        print(f"📦 Picked job {job_id}")
+
+        # mark running
+        _safe_update(sb, os.getenv("JOBS_TABLE","jobs"), job_id, {"status":"running","pct":1})
+
+        # download input
+        in_path = download_to_temp(video_url)
+
+        # run analysis
+        tracks_path, out_video_path = run_analysis(in_path)
+
+        # h264 transcode (browser-safe)
+        out_h264 = h264ify(out_video_path)
+
+        # upload under this job_id
+        tracks_key = f"{job_id}/tracks.json"
+        video_key  = f"{job_id}/out.mp4"
+        upload_public(tracks_key, tracks_path, "application/json")
+        upload_public(video_key,  out_h264,    "video/mp4")
+
+        tracks_url = public_url(tracks_key)
+        render_url = public_url(video_key)
+
+        # finalize this job row
+        sb.table(os.getenv("JOBS_TABLE","jobs")).update({
+            "status": "done",
+            "pct": 100,
+            "tracks_url": tracks_url,
+            "render_url": render_url,
+            "log": None
+        }).eq("id", job_id).execute()
+
+        print(f"✅ Job {job_id} done")
+    except Exception as e:
+        print("❌ Worker error:", e)
+        time.sleep(3)
+
+
+def _safe_update(sb, table, job_id, fields):
+    # try status+pct, then status-only
+    try:
+        sb.table(table).update(fields).eq("id", job_id).execute()
+    except Exception:
+        fields2 = {k:v for k,v in fields.items() if k in ("status",)}
+        if fields2:
+            sb.table(table).update(fields2).eq("id", job_id).execute()

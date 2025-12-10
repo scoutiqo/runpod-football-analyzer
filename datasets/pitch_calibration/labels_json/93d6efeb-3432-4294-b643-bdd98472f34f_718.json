@@ -1,0 +1,54 @@
+{
+  "TL_Corner": [
+    0.12,
+    0.18
+  ],
+  "TR_Corner": [
+    0.87,
+    0.21
+  ],
+  "BR_Corner": [
+    0.89,
+    0.68
+  ],
+  "BL_Corner": [
+    0.09,
+    0.66
+  ],
+  "Center_Circle_Top": [
+    0.48,
+    0.41
+  ],
+  "Center_Circle_Bottom": [
+    0.48,
+    0.53
+  ],
+  "Center_Spot": [
+    0.5,
+    0.47
+  ],
+  "Penalty_Spot_Left": [
+    0.35,
+    0.46
+  ],
+  "Penalty_Spot_Right": [
+    0.67,
+    0.52
+  ],
+  "Box_TL_Left": [
+    0.29,
+    0.38
+  ],
+  "Box_BL_Left": [
+    0.27,
+    0.57
+  ],
+  "Box_TR_Right": [
+    0.72,
+    0.31
+  ],
+  "Box_BR_Right": [
+    0.71,
+    0.63
+  ]
+}

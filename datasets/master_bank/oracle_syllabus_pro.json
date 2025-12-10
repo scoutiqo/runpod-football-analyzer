@@ -1,0 +1,518 @@
+[
+  {
+    "frame": 372,
+    "label": "goal",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "source": "force_learn"
+  },
+  {
+    "frame": 375,
+    "label": "goal",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "source": "force_learn"
+  },
+  {
+    "frame": 372,
+    "label": "save",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "source": "force_learn"
+  },
+  {
+    "frame": 534,
+    "label": "ground_duel",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "source": "force_learn"
+  },
+  {
+    "frame": 375,
+    "label": "save",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "source": "force_learn"
+  },
+  {
+    "frame": 534,
+    "label": "interception",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "source": "force_learn"
+  },
+  {
+    "frame": 375,
+    "label": "goal",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "source": "force_learn"
+  },
+  {
+    "frame": 372,
+    "label": "goal",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1468,
+    "label": "cutback",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "force_learn"
+  },
+  {
+    "frame": 516,
+    "label": "cross",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "force_learn"
+  },
+  {
+    "frame": 487,
+    "label": "cross",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "force_learn"
+  },
+  {
+    "frame": 775,
+    "label": "cross",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1271,
+    "label": "short_pass",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1469,
+    "label": "cutback",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2975,
+    "label": "goal",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2419,
+    "label": "save",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "force_learn"
+  },
+  {
+    "frame": 503,
+    "label": "cross",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "force_learn"
+  },
+  {
+    "frame": 372,
+    "label": "block_shot",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "source": "force_learn"
+  },
+  {
+    "frame": 534,
+    "label": "goal",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "source": "force_learn"
+  },
+  {
+    "frame": 375,
+    "label": "clearance",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2368,
+    "label": "ball_carry",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 680,
+    "label": "tackle",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1103,
+    "label": "cross",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1000,
+    "label": "ball_carry",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1400,
+    "label": "shot_foot",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2205,
+    "label": "goal",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1128,
+    "label": "dribble_attempt",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2363,
+    "label": "ball_carry",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2807,
+    "label": "dribble_attempt",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2812,
+    "label": "ground_duel",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2210,
+    "label": "penalty_shot",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 3402,
+    "label": "goal",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 3401,
+    "label": "goal",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 3399,
+    "label": "goal",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 4584,
+    "label": "interception",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 998,
+    "label": "ball_carry",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1994,
+    "label": "first_touch",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1617,
+    "label": "goal",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 3575,
+    "label": "shot_foot",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1076,
+    "label": "dribble_attempt",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 966,
+    "label": "throw_in",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2084,
+    "label": "corner_taken",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1582,
+    "label": "penalty_shot",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 979,
+    "label": "throw_in",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2543,
+    "label": "cross",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1830,
+    "label": "free_kick_cross",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 569,
+    "label": "corner_taken",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2655,
+    "label": "shot_foot",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2529,
+    "label": "corner_taken",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 823,
+    "label": "long_ball",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1524,
+    "label": "ball_carry",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 170,
+    "label": "ball_carry",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1865,
+    "label": "cross",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1603,
+    "label": "shot_foot",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2076,
+    "label": "sliding_tackle",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 881,
+    "label": "shot_foot",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2115,
+    "label": "sliding_tackle",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2308,
+    "label": "goal",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1090,
+    "label": "cross",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2245,
+    "label": "penalty_shot",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2355,
+    "label": "shot_foot",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1166,
+    "label": "aerial_duel",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2258,
+    "label": "ball_carry",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1671,
+    "label": "goal_kick",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "force_learn"
+  },
+  {
+    "frame": 4852,
+    "label": "goal",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "force_learn"
+  },
+  {
+    "frame": 3889,
+    "label": "goal",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "force_learn"
+  },
+  {
+    "frame": 4632,
+    "label": "tackle",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "force_learn"
+  },
+  {
+    "frame": 135,
+    "label": "corner_taken",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2506,
+    "label": "corner_taken",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2509,
+    "label": "corner_taken",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1262,
+    "label": "cross",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2694,
+    "label": "goal",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 249,
+    "label": "corner_taken",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 972,
+    "label": "throw_in",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 791,
+    "label": "long_ball",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2517,
+    "label": "free_kick_cross",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 476,
+    "label": "corner_taken",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2560,
+    "label": "cross",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2735,
+    "label": "ball_carry",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "force_learn"
+  },
+  {
+    "frame": 606,
+    "label": "long_ball",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2602,
+    "label": "shot_foot",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "force_learn"
+  },
+  {
+    "frame": 2547,
+    "label": "attack",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1956,
+    "label": "corner_taken",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "force_learn"
+  },
+  {
+    "frame": 625,
+    "label": "short_pass",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "force_learn"
+  },
+  {
+    "frame": 737,
+    "label": "cross",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "force_learn"
+  },
+  {
+    "frame": 1620,
+    "label": "shot_foot",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "force_learn"
+  }
+]

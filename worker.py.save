@@ -1,0 +1,235 @@
+import os
+import time
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+from supabase import create_client, Client
+
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+WORKER_ID = os.getenv("ML_WORKER_ID", "vast-worker-1")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+POLL_INTERVAL = 5  # seconds
+RAW_BUCKET = "raw-videos"
+ART_BUCKET = "ml-artifacts"
+
+BASE_DIR = Path("/workspace/runpod-football-analyzer")
+TMP_DIR = BASE_DIR / "tmp_jobs"
+TMP_DIR.mkdir(exist_ok=True)
+
+
+def claim_next_job():
+  res = (
+    supabase.table("ml_jobs")
+    .select("*")
+    .eq("status", "queued")
+    .order("created_at", desc=False)
+    .limit(1)
+    .execute()
+  )
+
+  jobs = res.data or []
+  if not jobs:
+    return None
+
+  job = jobs[0]
+  job_id = job["id"]
+
+  # optimistic locking: only take if still queued
+  upd = (
+    supabase.table("ml_jobs")
+    .update(
+      {
+        "status": "running",
+        "worker_id": WORKER_ID,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+      }
+    )
+    .eq("id", job_id)
+    .eq("status", "queued")
+    .execute()
+  )
+
+  if upd.data:
+    return job
+  return None
+
+
+def download_video(job):
+    path = job["source_video_url"]  # e.g. "user/<uid>/timestamp.mp4"
+    job_id = job["id"]
+    local_path = TMP_DIR / f"{job_id}.mp4"
+
+    print(f"[{WORKER_ID}] Downloading {RAW_BUCKET}/{path} -> {local_path}")
+
+    # supabase-py storage.download returns raw bytes
+    data = supabase.storage.from_(RAW_BUCKET).download(path)
+
+    if isinstance(data, bytes):
+        local_path.write_bytes(data)
+    else:
+        # for older versions that may return a response-like object
+        try:
+            content = getattr(data, "content", None)
+            if content is None:
+                raise AttributeError
+            local_path.write_bytes(content)
+        except AttributeError:
+            raise RuntimeError(
+                f"Unexpected download result type: {type(data)}; expected bytes or .content"
+            )
+
+    return local_path
+
+
+def run_pipeline_on_video(local_video_path: Path, job_id: str):
+    """
+    Executes the full ScoutIQO Pipeline sequence.
+    1. Tracking (Video -> Raw Tracks)
+    2. Event Analysis (Raw Tracks -> Clean -> Predict -> Upload)
+    """
+    print(f"[{WORKER_ID}] 🎥 1. Running High-Sensitivity Tracker...")
+    
+    # OUTPUT LOCATION: Tracks must be saved to the same path that the ML pipeline reads from
+    tracks_raw_path = BASE_DIR / "runs/json/tracks_wrapped_short_pb_ball.json"
+
+    # --- STEP 1: VIDEO -> RAW TRACKS ---
+    # Runs our high-sensitivity tracking config (yolov8m, conf 0.10)
+    subprocess.run(
+        [
+            "python", "core/run_tracker_cli.py",
+            "--input", str(local_video_path),
+            "--save", str(tracks_raw_path),
+        ],
+        cwd=str(BASE_DIR),
+        check=True, # Fail job if tracking fails
+    )
+
+    if not tracks_raw_path.exists():
+        raise FileNotFoundError(f"Tracking output missing at {tracks_raw_path}")
+
+    # --- STEP 2: RAW TRACKS -> EVENTS (The Brain) ---
+    print(f"[{WORKER_ID}] 🧠 2. Running Event Engine & Supabase Push...")
+
+    # Call our final controller script
+    subprocess.run(
+        [
+            "python", "core/run_event_pipeline.py",
+            "--match_id", job_id, # Pass the job ID as the match ID for testing purposes
+        ],
+        cwd=str(BASE_DIR),
+        check=True, 
+    )
+
+    # Note: Event pipeline handles output and cleanup.
+    tracks_final_path = BASE_DIR / "runs/json/formatted_tracks_silver.json" # The cleaned file
+    if not tracks_final_path.exists():
+        raise FileNotFoundError("Cleaned tracks output missing.")
+        
+    return tracks_final_path
+# ----------------------------------------------------
+
+def export_for_studio(job_id: str):
+  """
+  Reuse your existing export_for_studio.py but make JOB_ID dynamic.
+  Easiest hack: set an env var, or later refactor that script to accept args.
+  For now we assume export_for_studio.py uses JOB_ID = 'local-test-job'.
+  You can replace it with actual CLI args later.
+  """
+  print(f"[{WORKER_ID}] Exporting studio JSON for job {job_id}")
+
+  # Option A (quick hack): keep export_for_studio as-is and just overwrite JOB_ID inside.
+  # For now we just call it; tracks.json/meta.json/events.json will be in studio_export.
+  subprocess.run(
+    ["python", "export_for_studio.py"],
+    cwd=str(BASE_DIR),
+    check=True,
+  )
+
+  out_dir = BASE_DIR / "runs/json/studio_export"
+  meta = out_dir / "meta.json"
+  tracks = out_dir / "tracks.json"
+  events = out_dir / "events.json"
+  if not (meta.exists() and tracks.exists() and events.exists()):
+    raise FileNotFoundError("One of studio_export files is missing")
+  return meta, tracks, events
+
+
+def upload_artifacts(job_id: str, meta: Path, tracks: Path, events: Path):
+    prefix = f"job-{job_id}"
+    print(f"[{WORKER_ID}] Uploading artifacts under {ART_BUCKET}/{prefix}/")
+
+    for name, path in [
+        ("meta.json", meta),
+        ("tracks.json", tracks),
+        ("events.json", events),
+    ]:
+        file_key = f"{prefix}/{name}"
+        print(f"[{WORKER_ID}]  - uploading {path} -> {ART_BUCKET}/{file_key}")
+        with open(path, "rb") as f:
+            data = f.read()
+            # supabase-py expects bytes or file-like; we send bytes, no extra options
+            supabase.storage.from_(ART_BUCKET).upload(file_key, data)
+
+    return {
+        "meta_path": f"{prefix}/meta.json",
+        "tracks_path": f"{prefix}/tracks.json",
+        "events_path": f"{prefix}/events.json",
+    }
+
+
+def mark_done(job_id: str, paths: dict):
+    supabase.table("ml_jobs").update(
+        {
+            "status": "done",
+            "tracks_url": paths["tracks_path"],
+            "events_url": paths["events_path"],
+            # send a real JSON object; Supabase will store as jsonb
+            "artifacts": {
+                "meta_url": paths["meta_path"],
+                "bucket": ART_BUCKET,  # optional but nice to have
+            },
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", job_id).execute()
+
+
+def mark_error(job_id: str, message: str):
+  supabase.table("ml_jobs").update(
+    {
+      "status": "error",
+      "error_message": message[:500],
+      "finished_at": datetime.now(timezone.utc).isoformat(),
+      "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+  ).eq("id", job_id).execute()
+
+
+def main_loop():
+  while True:
+    job = claim_next_job()
+    if not job:
+      time.sleep(POLL_INTERVAL)
+      continue
+
+    job_id = job["id"]
+    print(f"[{WORKER_ID}] Picked job {job_id}")
+    try:
+      local_video = download_video(job)
+      tracks_json_path = run_pipeline_on_video(local_video, job_id)
+      meta, tracks, events = export_for_studio(job_id)
+      paths = upload_artifacts(job_id, meta, tracks, events)
+      mark_done(job_id, paths)
+      print(f"[{WORKER_ID}] Job {job_id} done")
+    except Exception as e:
+      print(f"[{WORKER_ID}] Job {job_id} error: {e}")
+      mark_error(job_id, str(e))
+
+
+if __name__ == "__main__":
+  main_loop()

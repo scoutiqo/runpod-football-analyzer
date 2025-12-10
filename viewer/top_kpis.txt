@@ -1,0 +1,8 @@
+=== TOP KPIs (from current artifacts) ===
+Frames: 55638
+Possession share: {0: 41.06, 1: 58.94}
+Avg reward: 0.0592 | P95 reward: 1.2
+Ball speed (avg, px/frame): 8.555
+Touches: 4631 (by team: {1: 2561, 0: 2070})
+Passes: 4630 (by team: {})
+Possessions: 1133

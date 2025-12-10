@@ -1,0 +1,205 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>ScoutIQO Overlay Viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;margin:0;background:#0b0b0d;color:#eaeaea}
+  header{padding:12px 16px;border-bottom:1px solid #222;display:flex;gap:12px;align-items:center}
+  .pill{padding:4px 10px;border-radius:999px;background:#15151a;border:1px solid #2b2b31;font-size:12px}
+  .wrap{display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px}
+  #stage{position:relative; border:1px solid #2b2b31; border-radius:12px; overflow:hidden; background:#111}
+  #video{display:block; width:100%; height:auto}
+  #overlay{position:absolute; left:0; top:0; pointer-events:none}
+  aside{display:flex; flex-direction:column; gap:12px}
+  .card{background:#111115;border:1px solid #2b2b31;border-radius:12px;padding:12px}
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .kv{background:#0e0e12;border:1px solid #24242a;border-radius:10px;padding:10px}
+  .kv h4{margin:0 0 4px 0;font-size:12px;color:#9aa0a6;font-weight:600}
+  .kv div{font-weight:700;font-size:18px}
+  .legend{display:flex;gap:8px;align-items:center}
+  .dot{width:10px;height:10px;border-radius:50%}
+  .team0{background:#4aa3ff}
+  .team1{background:#ff6b6b}
+  .ball{background:#ffd54a}
+  .row{display:flex;align-items:center;gap:8px}
+  button{background:#1a1a22;color:#eaeaea;border:1px solid #2b2b31;border-radius:10px;padding:6px 10px;cursor:pointer}
+  input[type="range"]{width:100%}
+  a{color:#8ab4f8}
+</style>
+</head>
+<body>
+  <header>
+    <div class="pill">ScoutIQO Interactive Viewer</div>
+    <div class="pill">←/→ frame • Space play/pause • +/- speed</div>
+    <div class="pill"><a href="summary.json" target="_blank">summary.json</a></div>
+    <div class="pill"><a href="top_kpis.txt" target="_blank">top_kpis.txt</a></div>
+    <div class="pill"><a href="passes.json" target="_blank">passes.json</a></div>
+  </header>
+
+  <div class="wrap">
+    <main id="stage">
+      <video id="video" src="full_match_test.mp4" controls playsinline></video>
+      <div class="card"><button id="play">Play</button> <button id="prev">◀</button> <button id="next">▶</button> <label class="mini">Jump <input id="jump" type="number" value="0" min="0" style="width:100px"></label> <label><input type="checkbox" id="showPlayers" checked> Players</label> <label><input type="checkbox" id="showBall" checked> Ball</label> <label><input type="checkbox" id="showEvents" checked> Events</label> <span id="time" class="mini"></span></div>
+<canvas id="overlay"></canvas>
+    </main>
+
+    <aside>
+      <div class="card kpis">
+        <div class="kv"><h4>Possession Team 0</h4><div id="pos0">—%</div></div>
+        <div class="kv"><h4>Possession Team 1</h4><div id="pos1">—%</div></div>
+        <div class="kv"><h4>Holder (id)</h4><div id="holder">—</div></div>
+        <div class="kv"><h4>Holder Team</h4><div id="hteam">—</div></div>
+        <div class="kv"><h4>Ball Speed</h4><div id="speed">0 px/s</div></div>
+        <div class="kv"><h4>Reward</h4><div id="reward">0.00</div></div>
+      </div>
+
+      <div class="card">
+        <div class="legend">
+          <div class="dot team0"></div> Team 0
+          <div class="dot team1" style="margin-left:10px;"></div> Team 1
+          <div class="dot ball" style="margin-left:10px;"></div> Ball
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <button id="btnPlay">Play/Pause</button>
+          <button id="btnStepBack">« Frame</button>
+          <button id="btnStepFwd">Frame »</button>
+          <button id="btnSpeedDn">-</button>
+          <button id="btnSpeedUp">+</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <input id="scrub" type="range" min="0" max="1" step="1" value="0"/>
+        </div>
+      </div>
+
+      <div class="card">
+        <div>Tip: open <a href="overlay_tracks.json" target="_blank">overlay_tracks.json</a> and <a href="overlay_ball.json" target="_blank">overlay_ball.json</a> to verify inputs.</div>
+      </div>
+    </aside>
+  </div>
+
+<script>
+(async function(){
+  const fps = 25; // keep in sync with overlay_ball.json if you change it
+  const [tracks, ball, summary] = await Promise.all([
+    fetch('overlay_tracks.json').then(r=>r.json()).catch(()=>({tracks:[]})),
+    fetch('overlay_ball.json').then(r=>r.json()).catch(()=>({fps:fps,frames:[]})),
+    fetch('summary.json').then(r=>r.json()).catch(()=>({}))
+  ]);
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('overlay');
+  const ctx = canvas.getContext('2d');
+  const scrub = document.getElementById('scrub');
+
+  // KPIs
+  document.getElementById('pos0').textContent = (summary.possession_share_percent?.[0] ?? '—') + '%';
+  document.getElementById('pos1').textContent = (summary.possession_share_percent?.[1] ?? '—') + '%';
+
+  // Resize canvas to video each frame
+  function fitCanvas(){
+    const r = video.getBoundingClientRect();
+    canvas.width = r.width; canvas.height = r.height;
+  }
+  window.addEventListener('resize', fitCanvas);
+  video.addEventListener('loadedmetadata', ()=>{
+    fitCanvas();
+    scrub.max = (ball.frames?.length ?? 1) - 1;
+  });
+
+  // mapping t → ball/frame info
+  const ballByT = new Map((ball.frames||[]).map(f=>[f.t,f]));
+  // group tracks by t for quick draw
+  const byT = new Map();
+  for(const r of (tracks.tracks||[])){
+    const t = r.t|0;
+    if(!byT.has(t)) byT.set(t, []);
+    byT.get(t).push(r);
+  }
+
+  function teamColor(team){
+    if(team===0) return '#4aa3ff';
+    if(team===1) return '#ff6b6b';
+    return '#a0a0a0';
+  }
+
+  function drawFrame(t){
+    if(canvas.width === 0 || canvas.height === 0) fitCanvas();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    const fr = byT.get(t) || [];
+    for(const p of fr){
+      const x = p.x / 768 * canvas.width;   // naive scale; adjust if your tracking coords differ
+      const y = p.y / 432 * canvas.height;  // (assumes model coords ~768x432). Change to your normalization.
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI*2);
+      ctx.fillStyle = teamColor(p.team);
+      ctx.fill();
+      ctx.fillStyle = '#eee';
+      ctx.font = '10px system-ui';
+      ctx.fillText(String(p.id), x+7, y-7);
+    }
+    // ball
+    const b = ballByT.get(t);
+    if(b){
+      const bx = b.bx / 768 * canvas.width;
+      const by = b.by / 432 * canvas.height;
+      ctx.beginPath();
+      ctx.arc(bx, by, 5, 0, Math.PI*2);
+      ctx.fillStyle = '#ffd54a';
+      ctx.fill();
+
+      // HUD
+      document.getElementById('holder').textContent = (b.holder_id ?? '—');
+      document.getElementById('hteam').textContent  = (b.holder_team ?? '—');
+      document.getElementById('speed').textContent  = `${(b.ball_speed_pxps||0).toFixed(1)} px/s`;
+      document.getElementById('reward').textContent = (b.reward||0).toFixed(2);
+    }
+  }
+
+  // Sync video time ↔ frame t
+  let playing = false;
+  function currentT(){
+    return Math.max(0, Math.min(ball.frames.length-1, Math.round(video.currentTime * fps)));
+  }
+  function seekToT(t){
+    video.currentTime = t / fps;
+    drawFrame(t);
+    scrub.value = t;
+  }
+
+  video.addEventListener('timeupdate', ()=>{
+    if(!playing) return;
+    drawFrame(currentT());
+    scrub.value = currentT();
+  });
+
+  // Controls
+  document.getElementById('btnPlay').addEventListener('click', ()=>{
+    if(video.paused){ video.play(); playing=true; } else { video.pause(); playing=false; }
+  });
+  document.getElementById('btnStepBack').addEventListener('click', ()=>{ video.pause(); playing=false; seekToT(Math.max(0,currentT()-1)); });
+  document.getElementById('btnStepFwd').addEventListener('click',  ()=>{ video.pause(); playing=false; seekToT(Math.min(ball.frames.length-1,currentT()+1)); });
+  document.getElementById('btnSpeedUp').addEventListener('click',  ()=>{ video.playbackRate=Math.min(4,(video.playbackRate||1)+0.25); });
+  document.getElementById('btnSpeedDn').addEventListener('click',  ()=>{ video.playbackRate=Math.max(0.25,(video.playbackRate||1)-0.25); });
+  scrub.addEventListener('input', ()=>{ video.pause(); playing=false; seekToT(parseInt(scrub.value,10)||0); });
+
+  // keyboard: space play/pause, arrows step, +/- rate
+  window.addEventListener('keydown', (e)=>{
+    if(e.key===' '){ e.preventDefault(); document.getElementById('btnPlay').click(); }
+    if(e.key==='ArrowRight'){ e.preventDefault(); document.getElementById('btnStepFwd').click(); }
+    if(e.key==='ArrowLeft'){ e.preventDefault(); document.getElementById('btnStepBack').click(); }
+    if(e.key==='+'){ document.getElementById('btnSpeedUp').click(); }
+    if(e.key==='-'){ document.getElementById('btnSpeedDn').click(); }
+  });
+
+  // initial draw
+  video.addEventListener('loadeddata', ()=>{ seekToT(0); });
+})();
+</script>
+<script src="static/app.js"></script>
+</body>
+</html>

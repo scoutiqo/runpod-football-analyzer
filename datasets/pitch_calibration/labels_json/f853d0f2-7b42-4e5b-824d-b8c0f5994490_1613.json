@@ -1,0 +1,30 @@
+{
+  "TL_Corner": [
+    0.12,
+    0.3
+  ],
+  "TR_Corner": [
+    0.92,
+    0.3
+  ],
+  "BR_Corner": [
+    0.92,
+    0.85
+  ],
+  "BL_Corner": [
+    0.12,
+    0.85
+  ],
+  "Penalty_Spot_Right": [
+    0.78,
+    0.55
+  ],
+  "Box_TR_Right": [
+    0.85,
+    0.5
+  ],
+  "Box_BR_Right": [
+    0.85,
+    0.75
+  ]
+}

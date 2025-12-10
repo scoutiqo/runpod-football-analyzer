@@ -1,0 +1,8 @@
+kpt_shape:
+- 13
+- 3
+names:
+  0: pitch
+path: /workspace/runpod-football-analyzer/datasets/pitch_calibration
+train: train/images
+val: val/images

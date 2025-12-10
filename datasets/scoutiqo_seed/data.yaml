@@ -1,0 +1,8 @@
+path: .
+train: images/train
+val: images/train
+names:
+  0: player
+  1: referee
+  2: goalkeeper
+  3: ball

@@ -1,0 +1,1238 @@
+.
+├── DETECTION_SAMPLE.jpg
+├── Dockerfile
+├── README_TRAINING.md
+├── README_quickstart.md
+├── SSE_FIXES_SUMMARY.md
+├── _export
+│   ├── json
+│   │   ├── events_v4.json
+│   │   └── full_tracks_v4_teamfix.json
+│   ├── models
+│   ├── plots
+│   │   ├── passes_edges.csv
+│   │   └── touches_per_player.csv
+│   └── videos
+├── active_learning.py
+├── add_ball_to_tracks.py
+├── ai
+│   ├── make_pass_dataset.py
+│   ├── models
+│   │   ├── archive
+│   │   └── current_training.json
+│   ├── nightly.py
+│   ├── scoutiqo1_baseline.py
+│   ├── scoutiqo1_learn_v0.py
+│   ├── scoutiqo1_train.py
+│   ├── scoutiqo1_train_supervised.py
+│   └── train_pass_success.py
+├── ai_agent.py
+├── analyzers
+│   ├── __init__.py
+│   ├── ball_tracker.py
+│   ├── events.py
+│   ├── phoenix_runner.py
+│   ├── tracking.py
+│   ├── tracking.py.bak
+│   └── value_models.py
+├── app.py
+├── auto_event_train.py
+├── auto_tune.py
+├── autotune.py
+├── backups
+│   └── poller_2025-11-05_125200.py
+├── ball_tracker.py
+├── build_event_dataset.py
+├── build_event_dataset.py.save
+├── calibrate.py
+├── config.py
+├── config_schema.json
+├── convert_objects_to_players_ball_short.py
+├── convert_pipeline_to_players_ball_short.py
+├── convert_tracks_v4.py
+├── datasets
+│   ├── scoutiqo_seed
+│   │   ├── data.yaml
+│   │   ├── images
+│   │   │   └── train
+│   │   │       ├── frame_000000.jpg
+│   │   │       ├── frame_000005.jpg
+│   │   │       ├── frame_000010.jpg
+│   │   │       ├── frame_000015.jpg
+│   │   │       ├── frame_000020.jpg
+│   │   │       ├── frame_000025.jpg
+│   │   │       ├── frame_000030.jpg
+│   │   │       ├── frame_000035.jpg
+│   │   │       ├── frame_000040.jpg
+│   │   │       ├── frame_000045.jpg
+│   │   │       ├── frame_000050.jpg
+│   │   │       ├── frame_000055.jpg
+│   │   │       ├── frame_000060.jpg
+│   │   │       ├── frame_000065.jpg
+│   │   │       ├── frame_000070.jpg
+│   │   │       ├── frame_000075.jpg
+│   │   │       ├── frame_000080.jpg
+│   │   │       ├── frame_000085.jpg
+│   │   │       ├── frame_000090.jpg
+│   │   │       ├── frame_000095.jpg
+│   │   │       ├── frame_000100.jpg
+│   │   │       ├── frame_000105.jpg
+│   │   │       ├── frame_000110.jpg
+│   │   │       ├── frame_000115.jpg
+│   │   │       ├── frame_000120.jpg
+│   │   │       ├── frame_000125.jpg
+│   │   │       ├── frame_000130.jpg
+│   │   │       ├── frame_000135.jpg
+│   │   │       ├── frame_000140.jpg
+│   │   │       ├── frame_000145.jpg
+│   │   │       ├── frame_000150.jpg
+│   │   │       ├── frame_000155.jpg
+│   │   │       ├── frame_000160.jpg
+│   │   │       ├── frame_000165.jpg
+│   │   │       ├── frame_000170.jpg
+│   │   │       ├── frame_000175.jpg
+│   │   │       ├── frame_000180.jpg
+│   │   │       ├── frame_000185.jpg
+│   │   │       ├── frame_000190.jpg
+│   │   │       ├── frame_000195.jpg
+│   │   │       ├── frame_000200.jpg
+│   │   │       ├── frame_000205.jpg
+│   │   │       ├── frame_000210.jpg
+│   │   │       ├── frame_000215.jpg
+│   │   │       ├── frame_000220.jpg
+│   │   │       ├── frame_000225.jpg
+│   │   │       ├── frame_000230.jpg
+│   │   │       ├── frame_000235.jpg
+│   │   │       ├── frame_000240.jpg
+│   │   │       ├── frame_000245.jpg
+│   │   │       ├── frame_000250.jpg
+│   │   │       ├── frame_000255.jpg
+│   │   │       ├── frame_000260.jpg
+│   │   │       ├── frame_000265.jpg
+│   │   │       ├── frame_000270.jpg
+│   │   │       ├── frame_000275.jpg
+│   │   │       ├── frame_000280.jpg
+│   │   │       ├── frame_000285.jpg
+│   │   │       ├── frame_000290.jpg
+│   │   │       ├── frame_000295.jpg
+│   │   │       ├── frame_000300.jpg
+│   │   │       ├── frame_000305.jpg
+│   │   │       ├── frame_000310.jpg
+│   │   │       ├── frame_000315.jpg
+│   │   │       ├── frame_000320.jpg
+│   │   │       ├── frame_000325.jpg
+│   │   │       ├── frame_000330.jpg
+│   │   │       ├── frame_000335.jpg
+│   │   │       ├── frame_000340.jpg
+│   │   │       ├── frame_000345.jpg
+│   │   │       ├── frame_000350.jpg
+│   │   │       ├── frame_000355.jpg
+│   │   │       ├── frame_000360.jpg
+│   │   │       ├── frame_000365.jpg
+│   │   │       ├── frame_000370.jpg
+│   │   │       ├── frame_000375.jpg
+│   │   │       ├── frame_000380.jpg
+│   │   │       ├── frame_000385.jpg
+│   │   │       ├── frame_000390.jpg
+│   │   │       ├── frame_000395.jpg
+│   │   │       ├── frame_000400.jpg
+│   │   │       ├── frame_000405.jpg
+│   │   │       ├── frame_000410.jpg
+│   │   │       ├── frame_000415.jpg
+│   │   │       ├── frame_000420.jpg
+│   │   │       ├── frame_000425.jpg
+│   │   │       ├── frame_000430.jpg
+│   │   │       ├── frame_000435.jpg
+│   │   │       ├── frame_000440.jpg
+│   │   │       ├── frame_000445.jpg
+│   │   │       ├── frame_000450.jpg
+│   │   │       ├── frame_000455.jpg
+│   │   │       ├── frame_000460.jpg
+│   │   │       ├── frame_000465.jpg
+│   │   │       ├── frame_000470.jpg
+│   │   │       ├── frame_000475.jpg
+│   │   │       ├── frame_000480.jpg
+│   │   │       ├── frame_000485.jpg
+│   │   │       ├── frame_000490.jpg
+│   │   │       ├── frame_000495.jpg
+│   │   │       ├── frame_000500.jpg
+│   │   │       ├── frame_000505.jpg
+│   │   │       ├── frame_000510.jpg
+│   │   │       ├── frame_000515.jpg
+│   │   │       ├── frame_000520.jpg
+│   │   │       ├── frame_000525.jpg
+│   │   │       ├── frame_000530.jpg
+│   │   │       ├── frame_000535.jpg
+│   │   │       ├── frame_000540.jpg
+│   │   │       ├── frame_000545.jpg
+│   │   │       ├── frame_000550.jpg
+│   │   │       ├── frame_000555.jpg
+│   │   │       ├── frame_000560.jpg
+│   │   │       ├── frame_000565.jpg
+│   │   │       ├── frame_000570.jpg
+│   │   │       ├── frame_000575.jpg
+│   │   │       ├── frame_000580.jpg
+│   │   │       ├── frame_000585.jpg
+│   │   │       ├── frame_000590.jpg
+│   │   │       ├── frame_000595.jpg
+│   │   │       ├── frame_000600.jpg
+│   │   │       ├── frame_000605.jpg
+│   │   │       ├── frame_000610.jpg
+│   │   │       ├── frame_000615.jpg
+│   │   │       ├── frame_000620.jpg
+│   │   │       ├── frame_000625.jpg
+│   │   │       ├── frame_000630.jpg
+│   │   │       ├── frame_000635.jpg
+│   │   │       ├── frame_000640.jpg
+│   │   │       ├── frame_000645.jpg
+│   │   │       ├── frame_000650.jpg
+│   │   │       ├── frame_000655.jpg
+│   │   │       ├── frame_000660.jpg
+│   │   │       ├── frame_000665.jpg
+│   │   │       ├── frame_000670.jpg
+│   │   │       ├── frame_000675.jpg
+│   │   │       ├── frame_000680.jpg
+│   │   │       ├── frame_000685.jpg
+│   │   │       ├── frame_000690.jpg
+│   │   │       ├── frame_000695.jpg
+│   │   │       ├── frame_000700.jpg
+│   │   │       ├── frame_000705.jpg
+│   │   │       ├── frame_000710.jpg
+│   │   │       ├── frame_000715.jpg
+│   │   │       ├── frame_000720.jpg
+│   │   │       ├── frame_000725.jpg
+│   │   │       ├── frame_000730.jpg
+│   │   │       ├── frame_000735.jpg
+│   │   │       ├── frame_000740.jpg
+│   │   │       └── frame_000745.jpg
+│   │   └── labels
+│   │       └── train
+│   │           ├── frame_000000.txt
+│   │           ├── frame_000005.txt
+│   │           ├── frame_000010.txt
+│   │           ├── frame_000015.txt
+│   │           ├── frame_000020.txt
+│   │           ├── frame_000025.txt
+│   │           ├── frame_000030.txt
+│   │           ├── frame_000035.txt
+│   │           ├── frame_000040.txt
+│   │           ├── frame_000045.txt
+│   │           ├── frame_000050.txt
+│   │           ├── frame_000055.txt
+│   │           ├── frame_000060.txt
+│   │           ├── frame_000065.txt
+│   │           ├── frame_000070.txt
+│   │           ├── frame_000075.txt
+│   │           ├── frame_000080.txt
+│   │           ├── frame_000085.txt
+│   │           ├── frame_000090.txt
+│   │           ├── frame_000095.txt
+│   │           ├── frame_000100.txt
+│   │           ├── frame_000105.txt
+│   │           ├── frame_000110.txt
+│   │           ├── frame_000115.txt
+│   │           ├── frame_000120.txt
+│   │           ├── frame_000125.txt
+│   │           ├── frame_000130.txt
+│   │           ├── frame_000135.txt
+│   │           ├── frame_000140.txt
+│   │           ├── frame_000145.txt
+│   │           ├── frame_000150.txt
+│   │           ├── frame_000155.txt
+│   │           ├── frame_000160.txt
+│   │           ├── frame_000165.txt
+│   │           ├── frame_000170.txt
+│   │           ├── frame_000175.txt
+│   │           ├── frame_000180.txt
+│   │           ├── frame_000185.txt
+│   │           ├── frame_000190.txt
+│   │           ├── frame_000195.txt
+│   │           ├── frame_000200.txt
+│   │           ├── frame_000205.txt
+│   │           ├── frame_000210.txt
+│   │           ├── frame_000215.txt
+│   │           ├── frame_000220.txt
+│   │           ├── frame_000225.txt
+│   │           ├── frame_000230.txt
+│   │           ├── frame_000235.txt
+│   │           ├── frame_000240.txt
+│   │           ├── frame_000245.txt
+│   │           ├── frame_000250.txt
+│   │           ├── frame_000255.txt
+│   │           ├── frame_000260.txt
+│   │           ├── frame_000265.txt
+│   │           ├── frame_000270.txt
+│   │           ├── frame_000275.txt
+│   │           ├── frame_000280.txt
+│   │           ├── frame_000285.txt
+│   │           ├── frame_000290.txt
+│   │           ├── frame_000295.txt
+│   │           ├── frame_000300.txt
+│   │           ├── frame_000305.txt
+│   │           ├── frame_000310.txt
+│   │           ├── frame_000315.txt
+│   │           ├── frame_000320.txt
+│   │           ├── frame_000325.txt
+│   │           ├── frame_000330.txt
+│   │           ├── frame_000335.txt
+│   │           ├── frame_000340.txt
+│   │           ├── frame_000345.txt
+│   │           ├── frame_000350.txt
+│   │           ├── frame_000355.txt
+│   │           ├── frame_000360.txt
+│   │           ├── frame_000365.txt
+│   │           ├── frame_000370.txt
+│   │           ├── frame_000375.txt
+│   │           ├── frame_000380.txt
+│   │           ├── frame_000385.txt
+│   │           ├── frame_000390.txt
+│   │           ├── frame_000395.txt
+│   │           ├── frame_000400.txt
+│   │           ├── frame_000405.txt
+│   │           ├── frame_000410.txt
+│   │           ├── frame_000415.txt
+│   │           ├── frame_000420.txt
+│   │           ├── frame_000425.txt
+│   │           ├── frame_000430.txt
+│   │           ├── frame_000435.txt
+│   │           ├── frame_000440.txt
+│   │           ├── frame_000445.txt
+│   │           ├── frame_000450.txt
+│   │           ├── frame_000455.txt
+│   │           ├── frame_000460.txt
+│   │           ├── frame_000465.txt
+│   │           ├── frame_000470.txt
+│   │           ├── frame_000475.txt
+│   │           ├── frame_000480.txt
+│   │           ├── frame_000485.txt
+│   │           ├── frame_000490.txt
+│   │           ├── frame_000495.txt
+│   │           ├── frame_000500.txt
+│   │           ├── frame_000505.txt
+│   │           ├── frame_000510.txt
+│   │           ├── frame_000515.txt
+│   │           ├── frame_000520.txt
+│   │           ├── frame_000525.txt
+│   │           ├── frame_000530.txt
+│   │           ├── frame_000535.txt
+│   │           ├── frame_000540.txt
+│   │           ├── frame_000545.txt
+│   │           ├── frame_000550.txt
+│   │           ├── frame_000555.txt
+│   │           ├── frame_000560.txt
+│   │           ├── frame_000565.txt
+│   │           ├── frame_000570.txt
+│   │           ├── frame_000575.txt
+│   │           ├── frame_000580.txt
+│   │           ├── frame_000585.txt
+│   │           ├── frame_000590.txt
+│   │           ├── frame_000595.txt
+│   │           ├── frame_000600.txt
+│   │           ├── frame_000605.txt
+│   │           ├── frame_000610.txt
+│   │           ├── frame_000615.txt
+│   │           ├── frame_000620.txt
+│   │           ├── frame_000625.txt
+│   │           ├── frame_000630.txt
+│   │           ├── frame_000635.txt
+│   │           ├── frame_000640.txt
+│   │           ├── frame_000645.txt
+│   │           ├── frame_000650.txt
+│   │           ├── frame_000655.txt
+│   │           ├── frame_000660.txt
+│   │           ├── frame_000665.txt
+│   │           ├── frame_000670.txt
+│   │           ├── frame_000675.txt
+│   │           ├── frame_000680.txt
+│   │           ├── frame_000685.txt
+│   │           ├── frame_000690.txt
+│   │           ├── frame_000695.txt
+│   │           ├── frame_000700.txt
+│   │           ├── frame_000705.txt
+│   │           ├── frame_000710.txt
+│   │           ├── frame_000715.txt
+│   │           ├── frame_000720.txt
+│   │           ├── frame_000725.txt
+│   │           ├── frame_000730.txt
+│   │           ├── frame_000735.txt
+│   │           ├── frame_000740.txt
+│   │           └── frame_000745.txt
+│   └── scoutiqo_v1
+│       ├── data.yaml
+│       ├── images
+│       │   ├── train
+│       │   │   ├── frame_000000.jpg
+│       │   │   ├── frame_000010.jpg
+│       │   │   ├── frame_000015.jpg
+│       │   │   ├── frame_000020.jpg
+│       │   │   ├── frame_000045.jpg
+│       │   │   ├── frame_000050.jpg
+│       │   │   ├── frame_000070.jpg
+│       │   │   ├── frame_000080.jpg
+│       │   │   ├── frame_000085.jpg
+│       │   │   ├── frame_000090.jpg
+│       │   │   ├── frame_000105.jpg
+│       │   │   ├── frame_000120.jpg
+│       │   │   ├── frame_000125.jpg
+│       │   │   ├── frame_000145.jpg
+│       │   │   ├── frame_000150.jpg
+│       │   │   ├── frame_000155.jpg
+│       │   │   ├── frame_000160.jpg
+│       │   │   ├── frame_000170.jpg
+│       │   │   ├── frame_000180.jpg
+│       │   │   ├── frame_000185.jpg
+│       │   │   ├── frame_000190.jpg
+│       │   │   ├── frame_000195.jpg
+│       │   │   ├── frame_000200.jpg
+│       │   │   ├── frame_000205.jpg
+│       │   │   ├── frame_000210.jpg
+│       │   │   ├── frame_000230.jpg
+│       │   │   ├── frame_000235.jpg
+│       │   │   ├── frame_000245.jpg
+│       │   │   ├── frame_000255.jpg
+│       │   │   ├── frame_000260.jpg
+│       │   │   ├── frame_000265.jpg
+│       │   │   ├── frame_000300.jpg
+│       │   │   ├── frame_000305.jpg
+│       │   │   ├── frame_000315.jpg
+│       │   │   ├── frame_000320.jpg
+│       │   │   ├── frame_000325.jpg
+│       │   │   ├── frame_000330.jpg
+│       │   │   ├── frame_000335.jpg
+│       │   │   ├── frame_000345.jpg
+│       │   │   ├── frame_000360.jpg
+│       │   │   ├── frame_000365.jpg
+│       │   │   ├── frame_000370.jpg
+│       │   │   ├── frame_000375.jpg
+│       │   │   ├── frame_000380.jpg
+│       │   │   ├── frame_000390.jpg
+│       │   │   ├── frame_000395.jpg
+│       │   │   ├── frame_000400.jpg
+│       │   │   ├── frame_000405.jpg
+│       │   │   ├── frame_000410.jpg
+│       │   │   ├── frame_000415.jpg
+│       │   │   ├── frame_000420.jpg
+│       │   │   ├── frame_000425.jpg
+│       │   │   ├── frame_000430.jpg
+│       │   │   ├── frame_000435.jpg
+│       │   │   ├── frame_000440.jpg
+│       │   │   ├── frame_000450.jpg
+│       │   │   ├── frame_000455.jpg
+│       │   │   ├── frame_000460.jpg
+│       │   │   ├── frame_000470.jpg
+│       │   │   ├── frame_000475.jpg
+│       │   │   ├── frame_000480.jpg
+│       │   │   ├── frame_000490.jpg
+│       │   │   ├── frame_000495.jpg
+│       │   │   ├── frame_000500.jpg
+│       │   │   ├── frame_000505.jpg
+│       │   │   ├── frame_000510.jpg
+│       │   │   ├── frame_000520.jpg
+│       │   │   ├── frame_000525.jpg
+│       │   │   ├── frame_000530.jpg
+│       │   │   ├── frame_000545.jpg
+│       │   │   ├── frame_000550.jpg
+│       │   │   ├── frame_000555.jpg
+│       │   │   ├── frame_000560.jpg
+│       │   │   ├── frame_000575.jpg
+│       │   │   ├── frame_000580.jpg
+│       │   │   ├── frame_000585.jpg
+│       │   │   ├── frame_000590.jpg
+│       │   │   ├── frame_000595.jpg
+│       │   │   ├── frame_000600.jpg
+│       │   │   ├── frame_000610.jpg
+│       │   │   ├── frame_000615.jpg
+│       │   │   ├── frame_000620.jpg
+│       │   │   ├── frame_000635.jpg
+│       │   │   ├── frame_000640.jpg
+│       │   │   ├── frame_000650.jpg
+│       │   │   ├── frame_000655.jpg
+│       │   │   ├── frame_000660.jpg
+│       │   │   ├── frame_000665.jpg
+│       │   │   ├── frame_000670.jpg
+│       │   │   ├── frame_000675.jpg
+│       │   │   ├── frame_000680.jpg
+│       │   │   ├── frame_000685.jpg
+│       │   │   ├── frame_000690.jpg
+│       │   │   ├── frame_000705.jpg
+│       │   │   ├── frame_000710.jpg
+│       │   │   ├── frame_000715.jpg
+│       │   │   ├── frame_000725.jpg
+│       │   │   ├── frame_000730.jpg
+│       │   │   ├── frame_000735.jpg
+│       │   │   └── frame_000745.jpg
+│       │   └── val
+│       │       ├── frame_000005.jpg
+│       │       ├── frame_000025.jpg
+│       │       ├── frame_000030.jpg
+│       │       ├── frame_000035.jpg
+│       │       ├── frame_000040.jpg
+│       │       ├── frame_000055.jpg
+│       │       ├── frame_000060.jpg
+│       │       ├── frame_000065.jpg
+│       │       ├── frame_000075.jpg
+│       │       ├── frame_000095.jpg
+│       │       ├── frame_000100.jpg
+│       │       ├── frame_000110.jpg
+│       │       ├── frame_000115.jpg
+│       │       ├── frame_000130.jpg
+│       │       ├── frame_000135.jpg
+│       │       ├── frame_000140.jpg
+│       │       ├── frame_000165.jpg
+│       │       ├── frame_000175.jpg
+│       │       ├── frame_000215.jpg
+│       │       ├── frame_000220.jpg
+│       │       ├── frame_000225.jpg
+│       │       ├── frame_000240.jpg
+│       │       ├── frame_000250.jpg
+│       │       ├── frame_000270.jpg
+│       │       ├── frame_000275.jpg
+│       │       ├── frame_000280.jpg
+│       │       ├── frame_000285.jpg
+│       │       ├── frame_000290.jpg
+│       │       ├── frame_000295.jpg
+│       │       ├── frame_000310.jpg
+│       │       ├── frame_000340.jpg
+│       │       ├── frame_000350.jpg
+│       │       ├── frame_000355.jpg
+│       │       ├── frame_000385.jpg
+│       │       ├── frame_000445.jpg
+│       │       ├── frame_000465.jpg
+│       │       ├── frame_000485.jpg
+│       │       ├── frame_000515.jpg
+│       │       ├── frame_000535.jpg
+│       │       ├── frame_000540.jpg
+│       │       ├── frame_000565.jpg
+│       │       ├── frame_000570.jpg
+│       │       ├── frame_000605.jpg
+│       │       ├── frame_000625.jpg
+│       │       ├── frame_000630.jpg
+│       │       ├── frame_000645.jpg
+│       │       ├── frame_000695.jpg
+│       │       ├── frame_000700.jpg
+│       │       ├── frame_000720.jpg
+│       │       └── frame_000740.jpg
+│       └── labels
+│           ├── train
+│           │   ├── frame_000000.txt
+│           │   ├── frame_000010.txt
+│           │   ├── frame_000015.txt
+│           │   ├── frame_000020.txt
+│           │   ├── frame_000045.txt
+│           │   ├── frame_000050.txt
+│           │   ├── frame_000070.txt
+│           │   ├── frame_000080.txt
+│           │   ├── frame_000085.txt
+│           │   ├── frame_000090.txt
+│           │   ├── frame_000105.txt
+│           │   ├── frame_000120.txt
+│           │   ├── frame_000125.txt
+│           │   ├── frame_000145.txt
+│           │   ├── frame_000150.txt
+│           │   ├── frame_000155.txt
+│           │   ├── frame_000160.txt
+│           │   ├── frame_000170.txt
+│           │   ├── frame_000180.txt
+│           │   ├── frame_000185.txt
+│           │   ├── frame_000190.txt
+│           │   ├── frame_000195.txt
+│           │   ├── frame_000200.txt
+│           │   ├── frame_000205.txt
+│           │   ├── frame_000210.txt
+│           │   ├── frame_000230.txt
+│           │   ├── frame_000235.txt
+│           │   ├── frame_000245.txt
+│           │   ├── frame_000255.txt
+│           │   ├── frame_000260.txt
+│           │   ├── frame_000265.txt
+│           │   ├── frame_000300.txt
+│           │   ├── frame_000305.txt
+│           │   ├── frame_000315.txt
+│           │   ├── frame_000320.txt
+│           │   ├── frame_000325.txt
+│           │   ├── frame_000330.txt
+│           │   ├── frame_000335.txt
+│           │   ├── frame_000345.txt
+│           │   ├── frame_000360.txt
+│           │   ├── frame_000365.txt
+│           │   ├── frame_000370.txt
+│           │   ├── frame_000375.txt
+│           │   ├── frame_000380.txt
+│           │   ├── frame_000390.txt
+│           │   ├── frame_000395.txt
+│           │   ├── frame_000400.txt
+│           │   ├── frame_000405.txt
+│           │   ├── frame_000410.txt
+│           │   ├── frame_000415.txt
+│           │   ├── frame_000420.txt
+│           │   ├── frame_000425.txt
+│           │   ├── frame_000430.txt
+│           │   ├── frame_000435.txt
+│           │   ├── frame_000440.txt
+│           │   ├── frame_000450.txt
+│           │   ├── frame_000455.txt
+│           │   ├── frame_000460.txt
+│           │   ├── frame_000470.txt
+│           │   ├── frame_000475.txt
+│           │   ├── frame_000480.txt
+│           │   ├── frame_000490.txt
+│           │   ├── frame_000495.txt
+│           │   ├── frame_000500.txt
+│           │   ├── frame_000505.txt
+│           │   ├── frame_000510.txt
+│           │   ├── frame_000520.txt
+│           │   ├── frame_000525.txt
+│           │   ├── frame_000530.txt
+│           │   ├── frame_000545.txt
+│           │   ├── frame_000550.txt
+│           │   ├── frame_000555.txt
+│           │   ├── frame_000560.txt
+│           │   ├── frame_000575.txt
+│           │   ├── frame_000580.txt
+│           │   ├── frame_000585.txt
+│           │   ├── frame_000590.txt
+│           │   ├── frame_000595.txt
+│           │   ├── frame_000600.txt
+│           │   ├── frame_000610.txt
+│           │   ├── frame_000615.txt
+│           │   ├── frame_000620.txt
+│           │   ├── frame_000635.txt
+│           │   ├── frame_000640.txt
+│           │   ├── frame_000650.txt
+│           │   ├── frame_000655.txt
+│           │   ├── frame_000660.txt
+│           │   ├── frame_000665.txt
+│           │   ├── frame_000670.txt
+│           │   ├── frame_000675.txt
+│           │   ├── frame_000680.txt
+│           │   ├── frame_000685.txt
+│           │   ├── frame_000690.txt
+│           │   ├── frame_000705.txt
+│           │   ├── frame_000710.txt
+│           │   ├── frame_000715.txt
+│           │   ├── frame_000725.txt
+│           │   ├── frame_000730.txt
+│           │   ├── frame_000735.txt
+│           │   └── frame_000745.txt
+│           ├── train.cache
+│           ├── val
+│           │   ├── frame_000005.txt
+│           │   ├── frame_000025.txt
+│           │   ├── frame_000030.txt
+│           │   ├── frame_000035.txt
+│           │   ├── frame_000040.txt
+│           │   ├── frame_000055.txt
+│           │   ├── frame_000060.txt
+│           │   ├── frame_000065.txt
+│           │   ├── frame_000075.txt
+│           │   ├── frame_000095.txt
+│           │   ├── frame_000100.txt
+│           │   ├── frame_000110.txt
+│           │   ├── frame_000115.txt
+│           │   ├── frame_000130.txt
+│           │   ├── frame_000135.txt
+│           │   ├── frame_000140.txt
+│           │   ├── frame_000165.txt
+│           │   ├── frame_000175.txt
+│           │   ├── frame_000215.txt
+│           │   ├── frame_000220.txt
+│           │   ├── frame_000225.txt
+│           │   ├── frame_000240.txt
+│           │   ├── frame_000250.txt
+│           │   ├── frame_000270.txt
+│           │   ├── frame_000275.txt
+│           │   ├── frame_000280.txt
+│           │   ├── frame_000285.txt
+│           │   ├── frame_000290.txt
+│           │   ├── frame_000295.txt
+│           │   ├── frame_000310.txt
+│           │   ├── frame_000340.txt
+│           │   ├── frame_000350.txt
+│           │   ├── frame_000355.txt
+│           │   ├── frame_000385.txt
+│           │   ├── frame_000445.txt
+│           │   ├── frame_000465.txt
+│           │   ├── frame_000485.txt
+│           │   ├── frame_000515.txt
+│           │   ├── frame_000535.txt
+│           │   ├── frame_000540.txt
+│           │   ├── frame_000565.txt
+│           │   ├── frame_000570.txt
+│           │   ├── frame_000605.txt
+│           │   ├── frame_000625.txt
+│           │   ├── frame_000630.txt
+│           │   ├── frame_000645.txt
+│           │   ├── frame_000695.txt
+│           │   ├── frame_000700.txt
+│           │   ├── frame_000720.txt
+│           │   └── frame_000740.txt
+│           └── val.cache
+├── detector.py
+├── detector.py.bak
+├── detector_samples.zip
+├── detector_v1_samples_view -> /workspace/runpod-football-analyzer/runs/detect/detector_v1_samples
+├── dist
+│   ├── media
+│   ├── static
+│   │   ├── app.js
+│   │   └── data.json
+│   └── viewer.html
+├── dockerignore
+├── draw_from_tracks.py
+├── env.sh
+├── env_config.txt
+├── env_template.txt
+├── evaluate_on_labeled_frames.py
+├── evaluator.py
+├── event_features_v2.py
+├── events
+│   ├── __init__.py
+│   ├── actions.py
+│   └── possessions.py
+├── events.py
+├── events_from_tracks.py
+├── events_from_tracks_learned.py
+├── events_from_tracks_pipeline.py
+├── evolver.py
+├── export_tracks.py
+├── file_structure.txt
+├── files
+├── filters.py
+├── handler.py
+├── inspect_tracks.py
+├── label_videos
+├── labels.json
+├── labelstudio_exports
+│   └── project-1-at-2025-11-17-14-04-4ecda89a.json
+├── link_events_to_tracks.py
+├── list
+├── live_server.py
+├── logs_team_assign.txt
+├── make_tracks_raw.py
+├── merge
+│   ├── __init__.py
+│   └── segments.py
+├── metrics
+│   ├── __init__.py
+│   ├── enrich.py
+│   ├── packing.py
+│   ├── physical.py
+│   ├── pitch.py
+│   ├── players.py
+│   ├── value_models.py
+│   └── xt.py
+├── mined_frames
+│   ├── t000708.jpg
+│   ├── t000900.jpg
+│   ├── t000912.jpg
+│   ├── t000948.jpg
+│   ├── t000972.jpg
+│   ├── t001056.jpg
+│   ├── t001068.jpg
+│   ├── t001080.jpg
+│   ├── t001092.jpg
+│   ├── t001116.jpg
+│   ├── t001128.jpg
+│   ├── t001140.jpg
+│   ├── t001152.jpg
+│   ├── t001200.jpg
+│   ├── t001224.jpg
+│   ├── t001320.jpg
+│   ├── t001332.jpg
+│   ├── t001356.jpg
+│   ├── t001368.jpg
+│   ├── t001380.jpg
+│   ├── t001392.jpg
+│   ├── t001404.jpg
+│   ├── t001416.jpg
+│   ├── t001428.jpg
+│   ├── t001440.jpg
+│   ├── t001452.jpg
+│   ├── t001476.jpg
+│   ├── t001500.jpg
+│   ├── t001560.jpg
+│   ├── t001572.jpg
+│   ├── t001584.jpg
+│   ├── t002004.jpg
+│   ├── t002016.jpg
+│   ├── t002076.jpg
+│   ├── t002172.jpg
+│   ├── t002184.jpg
+│   ├── t002244.jpg
+│   ├── t002256.jpg
+│   ├── t002268.jpg
+│   ├── t002280.jpg
+│   ├── t002292.jpg
+│   ├── t002400.jpg
+│   ├── t002412.jpg
+│   ├── t002436.jpg
+│   ├── t002628.jpg
+│   ├── t002640.jpg
+│   ├── t002688.jpg
+│   ├── t003072.jpg
+│   ├── t003576.jpg
+│   ├── t003612.jpg
+│   ├── t003672.jpg
+│   ├── t003684.jpg
+│   ├── t003696.jpg
+│   ├── t003708.jpg
+│   ├── t003720.jpg
+│   ├── t003732.jpg
+│   ├── t003744.jpg
+│   ├── t003756.jpg
+│   ├── t003768.jpg
+│   ├── t003780.jpg
+│   ├── t003828.jpg
+│   ├── t003840.jpg
+│   ├── t003876.jpg
+│   ├── t003888.jpg
+│   ├── t003900.jpg
+│   ├── t003912.jpg
+│   ├── t004032.jpg
+│   ├── t004044.jpg
+│   ├── t004056.jpg
+│   ├── t004068.jpg
+│   ├── t004080.jpg
+│   ├── t004092.jpg
+│   ├── t004104.jpg
+│   ├── t004116.jpg
+│   ├── t004128.jpg
+│   ├── t004140.jpg
+│   ├── t004176.jpg
+│   ├── t004212.jpg
+│   ├── t004224.jpg
+│   ├── t004260.jpg
+│   ├── t004284.jpg
+│   ├── t004296.jpg
+│   ├── t004308.jpg
+│   ├── t004320.jpg
+│   ├── t004332.jpg
+│   ├── t004344.jpg
+│   ├── t004356.jpg
+│   ├── t004368.jpg
+│   ├── t004392.jpg
+│   ├── t004404.jpg
+│   ├── t004416.jpg
+│   ├── t004428.jpg
+│   ├── t004452.jpg
+│   ├── t004476.jpg
+│   ├── t004488.jpg
+│   ├── t005652.jpg
+│   ├── t005676.jpg
+│   ├── t005712.jpg
+│   ├── t005724.jpg
+│   ├── t005736.jpg
+│   ├── t005808.jpg
+│   ├── t005820.jpg
+│   ├── t005880.jpg
+│   ├── t005892.jpg
+│   ├── t005940.jpg
+│   ├── t005952.jpg
+│   ├── t005964.jpg
+│   ├── t006048.jpg
+│   ├── t006072.jpg
+│   ├── t006084.jpg
+│   ├── t006096.jpg
+│   ├── t006132.jpg
+│   ├── t006144.jpg
+│   ├── t006156.jpg
+│   ├── t006168.jpg
+│   ├── t006180.jpg
+│   ├── t006192.jpg
+│   ├── t006204.jpg
+│   ├── t006216.jpg
+│   ├── t006228.jpg
+│   ├── t006240.jpg
+│   ├── t006252.jpg
+│   ├── t006264.jpg
+│   ├── t006276.jpg
+│   ├── t006288.jpg
+│   ├── t006300.jpg
+│   ├── t006312.jpg
+│   ├── t006324.jpg
+│   ├── t006444.jpg
+│   ├── t006456.jpg
+│   ├── t006468.jpg
+│   ├── t006480.jpg
+│   ├── t006492.jpg
+│   ├── t006504.jpg
+│   ├── t006612.jpg
+│   ├── t006624.jpg
+│   ├── t006636.jpg
+│   ├── t006732.jpg
+│   ├── t006744.jpg
+│   ├── t006756.jpg
+│   ├── t006780.jpg
+│   ├── t006792.jpg
+│   ├── t006804.jpg
+│   ├── t006816.jpg
+│   ├── t006828.jpg
+│   ├── t006840.jpg
+│   ├── t006864.jpg
+│   ├── t006876.jpg
+│   ├── t006888.jpg
+│   ├── t006900.jpg
+│   ├── t006912.jpg
+│   ├── t006924.jpg
+│   ├── t006936.jpg
+│   ├── t006948.jpg
+│   ├── t006960.jpg
+│   ├── t006972.jpg
+│   ├── t006984.jpg
+│   ├── t006996.jpg
+│   ├── t007008.jpg
+│   ├── t007020.jpg
+│   ├── t007032.jpg
+│   ├── t007044.jpg
+│   ├── t007056.jpg
+│   ├── t007080.jpg
+│   ├── t007092.jpg
+│   ├── t007104.jpg
+│   ├── t007152.jpg
+│   ├── t007164.jpg
+│   ├── t007176.jpg
+│   ├── t007188.jpg
+│   ├── t007200.jpg
+│   ├── t007212.jpg
+│   ├── t007224.jpg
+│   ├── t007236.jpg
+│   ├── t007248.jpg
+│   ├── t007260.jpg
+│   ├── t007272.jpg
+│   ├── t007284.jpg
+│   ├── t007308.jpg
+│   ├── t007320.jpg
+│   ├── t007332.jpg
+│   ├── t007464.jpg
+│   ├── t007476.jpg
+│   ├── t007488.jpg
+│   ├── t007500.jpg
+│   ├── t007524.jpg
+│   ├── t007536.jpg
+│   ├── t007548.jpg
+│   ├── t007560.jpg
+│   ├── t007572.jpg
+│   ├── t007584.jpg
+│   ├── t007608.jpg
+│   ├── t007620.jpg
+│   ├── t007716.jpg
+│   ├── t007788.jpg
+│   ├── t007800.jpg
+│   ├── t007812.jpg
+│   ├── t007836.jpg
+│   ├── t007848.jpg
+│   ├── t007884.jpg
+│   ├── t008064.jpg
+│   ├── t008076.jpg
+│   ├── t008112.jpg
+│   ├── t008124.jpg
+│   ├── t008196.jpg
+│   ├── t008208.jpg
+│   ├── t008220.jpg
+│   ├── t008268.jpg
+│   ├── t008352.jpg
+│   ├── t008412.jpg
+│   ├── t008448.jpg
+│   ├── t008460.jpg
+│   ├── t008520.jpg
+│   ├── t008580.jpg
+│   ├── t008592.jpg
+│   ├── t008616.jpg
+│   ├── t008628.jpg
+│   ├── t008652.jpg
+│   ├── t008676.jpg
+│   ├── t008688.jpg
+│   ├── t008976.jpg
+│   ├── t009000.jpg
+│   ├── t009132.jpg
+│   ├── t009180.jpg
+│   ├── t009192.jpg
+│   ├── t009204.jpg
+│   ├── t009300.jpg
+│   ├── t009336.jpg
+│   ├── t009348.jpg
+│   ├── t009360.jpg
+│   ├── t009372.jpg
+│   ├── t009384.jpg
+│   ├── t009396.jpg
+│   ├── t009420.jpg
+│   ├── t009432.jpg
+│   ├── t009444.jpg
+│   ├── t009468.jpg
+│   ├── t009480.jpg
+│   ├── t009504.jpg
+│   ├── t009588.jpg
+│   ├── t009600.jpg
+│   ├── t009612.jpg
+│   ├── t009708.jpg
+│   ├── t009720.jpg
+│   ├── t009732.jpg
+│   ├── t009744.jpg
+│   ├── t009852.jpg
+│   ├── t009864.jpg
+│   ├── t009900.jpg
+│   ├── t010056.jpg
+│   ├── t010140.jpg
+│   ├── t010152.jpg
+│   ├── t010416.jpg
+│   ├── t010428.jpg
+│   ├── t010440.jpg
+│   ├── t010464.jpg
+│   ├── t010764.jpg
+│   ├── t010776.jpg
+│   ├── t010896.jpg
+│   ├── t010980.jpg
+│   ├── t011028.jpg
+│   ├── t011076.jpg
+│   ├── t011496.jpg
+│   ├── t011508.jpg
+│   ├── t011772.jpg
+│   ├── t011784.jpg
+│   ├── t011796.jpg
+│   ├── t011820.jpg
+│   ├── t011964.jpg
+│   ├── t011976.jpg
+│   ├── t011988.jpg
+│   ├── t012132.jpg
+│   ├── t012288.jpg
+│   ├── t012552.jpg
+│   ├── t012636.jpg
+│   ├── t012648.jpg
+│   ├── t012756.jpg
+│   ├── t012768.jpg
+│   ├── t012780.jpg
+│   ├── t012828.jpg
+│   ├── t012840.jpg
+│   ├── t012888.jpg
+│   ├── t012912.jpg
+│   ├── t012924.jpg
+│   ├── t012936.jpg
+│   ├── t012948.jpg
+│   ├── t012960.jpg
+│   ├── t012972.jpg
+│   ├── t013020.jpg
+│   ├── t013056.jpg
+│   ├── t013068.jpg
+│   ├── t013080.jpg
+│   ├── t013092.jpg
+│   ├── t013104.jpg
+│   ├── t013128.jpg
+│   ├── t013224.jpg
+│   ├── t013236.jpg
+│   ├── t013248.jpg
+│   ├── t013296.jpg
+│   ├── t013308.jpg
+│   ├── t013344.jpg
+│   ├── t013380.jpg
+│   ├── t013464.jpg
+│   ├── t013584.jpg
+│   ├── t013836.jpg
+│   ├── t013908.jpg
+│   ├── t013944.jpg
+│   ├── t013992.jpg
+│   ├── t014004.jpg
+│   ├── t014016.jpg
+│   ├── t014028.jpg
+│   ├── t014040.jpg
+│   ├── t014052.jpg
+│   ├── t014160.jpg
+│   ├── t014172.jpg
+│   ├── t014184.jpg
+│   ├── t014196.jpg
+│   ├── t014232.jpg
+│   ├── t014328.jpg
+│   ├── t014340.jpg
+│   ├── t014352.jpg
+│   ├── t014364.jpg
+│   ├── t014400.jpg
+│   ├── t014412.jpg
+│   ├── t014436.jpg
+│   ├── t014448.jpg
+│   ├── t014472.jpg
+│   ├── t014604.jpg
+│   ├── t014616.jpg
+│   ├── t014628.jpg
+│   ├── t014640.jpg
+│   ├── t014760.jpg
+│   ├── t015348.jpg
+│   ├── t015744.jpg
+│   ├── t015756.jpg
+│   ├── t015816.jpg
+│   ├── t015912.jpg
+│   ├── t015996.jpg
+│   ├── t016056.jpg
+│   ├── t016248.jpg
+│   ├── t016260.jpg
+│   ├── t016296.jpg
+│   ├── t016320.jpg
+│   ├── t016332.jpg
+│   ├── t016464.jpg
+│   ├── t016476.jpg
+│   ├── t016536.jpg
+│   ├── t016560.jpg
+│   ├── t016572.jpg
+│   ├── t016584.jpg
+│   ├── t016800.jpg
+│   ├── t016872.jpg
+│   ├── t016896.jpg
+│   ├── t016992.jpg
+│   ├── t017628.jpg
+│   ├── t017640.jpg
+│   ├── t017652.jpg
+│   ├── t017664.jpg
+│   ├── t017676.jpg
+│   ├── t017688.jpg
+│   ├── t017700.jpg
+│   ├── t017784.jpg
+│   ├── t017796.jpg
+│   ├── t017880.jpg
+│   ├── t017892.jpg
+│   ├── t018024.jpg
+│   ├── t018084.jpg
+│   ├── t018420.jpg
+│   ├── t018636.jpg
+│   ├── t018720.jpg
+│   ├── t019080.jpg
+│   ├── t019128.jpg
+│   ├── t019140.jpg
+│   ├── t019296.jpg
+│   ├── t019308.jpg
+│   ├── t019320.jpg
+│   ├── t019332.jpg
+│   ├── t019428.jpg
+│   ├── t019512.jpg
+│   ├── t019572.jpg
+│   ├── t020268.jpg
+│   ├── t020292.jpg
+│   ├── t020316.jpg
+│   ├── t020340.jpg
+│   ├── t020376.jpg
+│   ├── t020448.jpg
+│   ├── t020640.jpg
+│   ├── t020784.jpg
+│   ├── t020880.jpg
+│   ├── t020892.jpg
+│   ├── t020904.jpg
+│   ├── t020940.jpg
+│   ├── t020952.jpg
+│   ├── t021180.jpg
+│   ├── t021192.jpg
+│   ├── t021204.jpg
+│   ├── t021240.jpg
+│   ├── t021252.jpg
+│   ├── t021264.jpg
+│   └── t021276.jpg
+├── models
+│   ├── event_model.pkl
+│   ├── event_model_extreme.pkl
+│   ├── event_model_extreme_meta.json
+│   └── event_model_meta.json
+├── normalize_tracks.py
+├── normalize_tracks_v2.py
+├── normalize_tracks_v3.py
+├── ontology.py
+├── params.json
+├── pipeline.py
+├── pitchctl.py
+├── poller.py
+├── poller.py.bak.1762351381
+├── poller.py.bak.1762351474
+├── predict_events_from_tracks.py
+├── professional_ai_tracker.py
+├── professional_ai_tracker.py.bak
+├── render
+│   ├── __init__.py
+│   ├── heatmap.py
+│   └── overlay.py
+├── requirements.cpu-min.txt
+├── requirements.cpu.txt
+├── requirements.txt
+├── run_agent.ps1
+├── run_players_ball_simple.py
+├── run_team_assign.py
+├── run_team_assign_v2.py
+├── run_tracker_cli.py
+├── runs_backup_2025-10-30_1439.tgz
+├── schemas
+│   └── contracts.py
+├── server
+│   ├── admin_models.py
+│   ├── admin_readouts.py
+│   ├── live_track_demo.py
+│   ├── model_status.py
+│   ├── monitor.py
+│   ├── progress.py
+│   ├── rescue_local.py
+│   ├── runpod-football-analyzer.code-workspace
+│   ├── server.py
+│   ├── simple_demo.py
+│   ├── sse_bus.py
+│   ├── storage_supabase.py
+│   ├── train_routes.py
+│   └── train_trigger.py
+├── server.log
+├── server_simple.py
+├── setup_cpu.sh
+├── shape.py
+├── simple_ai_tracker.py
+├── simple_video_analysis.py
+├── smooth.py
+├── supabase_client.py
+├── supabase_schema.sql
+├── team_assign.py
+├── test_event_extraction.py
+├── tools
+│   ├── denoise_tracks.py
+│   ├── make_seed_dataset.py
+│   ├── mine_hard_frames.py
+│   ├── prepare_tracks.py
+│   └── pull_ls_export.py
+├── track_test.py
+├── tracker_players.py
+├── tracking_test.py
+├── tracks_meters.json
+├── tracks_raw.json
+├── tracks_vis.json
+├── train_event_model.py
+├── train_loop.py
+├── training
+│   ├── __init__.py
+│   ├── datasets
+│   │   ├── football_v2
+│   │   │   ├── data.yaml
+│   │   │   ├── images
+│   │   │   │   ├── train
+│   │   │   │   └── val
+│   │   │   └── labels
+│   │   │       ├── train
+│   │   │       └── val
+│   │   └── test_short_candidates.json
+│   ├── generate_pass_candidates.py
+│   ├── generate_pseudolabels.py
+│   ├── labels
+│   │   ├── pass_labels.json
+│   │   ├── test_short_passes.json
+│   │   ├── test_short_passes.jsonnn`
+│   │   └── test_short_passes.jsonnn`.save
+│   ├── train.py
+│   ├── train_pass_classifier.py
+│   └── utils_supabase.py
+├── uploads
+│   └── job_20251031_153306
+├── view_samples
+│   ├── 000001.jpg
+│   ├── 000011.jpg
+│   ├── 000021.jpg
+│   ├── 000031.jpg
+│   ├── 000041.jpg
+│   ├── 000051.jpg
+│   ├── 000061.jpg
+│   ├── 000071.jpg
+│   ├── 000081.jpg
+│   ├── 000091.jpg
+│   ├── 000101.jpg
+│   └── 000111.jpg
+├── viewer_streamlit.py
+└── working_server.py
+
+53 directories, 1183 files

@@ -1,0 +1,149 @@
+#!/usr/bin/env python
+"""
+Build an event-level dataset from Label Studio export + tracks file,
+using the v2 feature extractor with temporal context windows.
+"""
+
+import json
+import csv
+import os
+from typing import Any, Dict, List, Tuple
+from collections import Counter
+
+from event_features_v2 import (
+    TRACKS_PATH,
+    build_all_frame_features,
+    build_context_feature_vector,
+)
+
+# Paths
+LS_EXPORT_PATH = "runs/json/ls_export_project1.json"
+DATASET_CSV = "runs/json/event_dataset.csv"
+DATASET_META = "runs/json/event_dataset_meta.json"
+
+# Label normalization map: map many variants into a few canonical classes
+LABEL_CANONICAL_MAP = {
+    "pass": "pass",
+    "successful_pass": "pass",
+    "long_pass": "pass",
+    "failed_pass": "pass",
+    "ball_loss": "ball_loss",
+    "turnover": "ball_loss",
+    "duel": "duel",
+    "tackle": "duel",
+}
+
+
+def _load_ls_export(path: str) -> List[Dict[str, Any]]:
+    with open(path, "r") as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        # Label Studio sometimes wraps in {"tasks": [...]}
+        if "tasks" in data and isinstance(data["tasks"], list):
+            return data["tasks"]
+        # or {"results": [...]}
+        if "results" in data and isinstance(data["results"], list):
+            return data["results"]
+        # Fallback: single task in dict
+        return [data]
+    if isinstance(data, list):
+        return data
+    raise ValueError(f"Unexpected LS export format in {path!r}")
+
+
+
+
+def build_event_dataset() -> None:
+    print(f"Reading Label Studio export: {LS_EXPORT_PATH}")
+    tasks = _load_ls_export(LS_EXPORT_PATH)
+    print(f"Tasks in LS export: {len(tasks)}")
+
+    # Load per-frame features from tracks file
+    print(f"Loading tracks & computing per-frame features from: {TRACKS_PATH}")
+    info = build_all_frame_features(TRACKS_PATH)
+    frame_features = info["features"]
+    fps = info["fps"]
+    team_keys = info["team_keys"]
+    n_frames = len(frame_features)
+    print(f"Detected {n_frames} frames; per-frame feature dim = {len(frame_features[0]) if frame_features else 0}")
+    print(f"Team keys: {team_keys}")
+
+    # Collect events from all tasks
+    events: List[Tuple[int, str]] = []
+    for t in tasks:
+        evs = _extract_events_from_task(t)
+        events.extend(evs)
+
+    # Convert any float "start time" frame indices to actual frame indices using fps
+    processed_events: List[Tuple[int, str]] = []
+    for frame_idx, label in events:
+        if isinstance(frame_idx, float):
+            f = int(round(frame_idx * fps))
+        else:
+            f = int(frame_idx)
+        if f < 0 or f >= n_frames:
+            f = max(0, min(n_frames - 1, f))
+        processed_events.append((f, label))
+
+    if not processed_events:
+        print("No events found in Label Studio export after processing.")
+        return
+
+    # Stats
+    counter = Counter(lbl for _, lbl in processed_events)
+    print(f"Loaded {len(processed_events)} events from Label Studio.")
+    print(f"Canonical label counts: {counter}")
+
+    # Build dataset rows
+    header = ["frame", "label"]
+    from event_features_v2 import CONTEXT_RADIUS  # just for info
+
+    # infer feature count from a sample context
+    sample_ctx = build_context_feature_vector(
+        processed_events[0][0], frame_features
+    )
+    n_feats = len(sample_ctx)
+    feat_cols = [f"f_{i}" for i in range(n_feats)]
+    header.extend(feat_cols)
+
+    rows: List[List[Any]] = []
+    for frame_idx, label in processed_events:
+        ctx_vec = build_context_feature_vector(frame_idx, frame_features)
+        if len(ctx_vec) != n_feats:
+            if len(ctx_vec) < n_feats:
+                ctx_vec = ctx_vec + [0.0] * (n_feats - len(ctx_vec))
+            else:
+                ctx_vec = ctx_vec[:n_feats]
+
+        row = [frame_idx, label]
+        row.extend(float(v) for v in ctx_vec)
+        rows.append(row)
+
+    os.makedirs(os.path.dirname(DATASET_CSV), exist_ok=True)
+    with open(DATASET_CSV, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows)
+
+    print(f"Wrote CSV dataset to {DATASET_CSV} with {len(rows)} rows and {n_feats} features per row.")
+
+    # Save meta
+    meta = {
+        "tracks_path": TRACKS_PATH,
+        "ls_export_path": LS_EXPORT_PATH,
+        "fps": fps,
+        "team_keys": team_keys,
+        "n_frames": n_frames,
+        "n_events": len(rows),
+        "labels_count": dict(counter),
+        "n_features": n_feats,
+        "feature_columns": feat_cols,
+        "context_radius": CONTEXT_RADIUS,
+    }
+    with open(DATASET_META, "w") as f:
+        json.dump(meta, f, indent=2)
+    print(f"Wrote dataset meta to {DATASET_META}")
+
+
+if __name__ == "__main__":
+    build_event_dataset()

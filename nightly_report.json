@@ -1,0 +1,18 @@
+{
+  "ball_frames_recovered": 86,
+  "shots_discovered": 0,
+  "camera_cuts_detected": 0,
+  "fixed_jobs": [
+    "evolve",
+    "wrapped",
+    "team",
+    "wrapped_short",
+    "team_short",
+    "players_ball_simple",
+    "raw_tracked_short",
+    "clip",
+    "d0dd07fb-60e0-4e9e-8063-4800d6bce071",
+    "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "aceb95c0-f8ed-4674-a835-e27b2f474a7a"
+  ]
+}

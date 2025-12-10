@@ -1,0 +1,102 @@
+[
+  {
+    "frame": 150,
+    "label": "shot",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531"
+  },
+  {
+    "frame": 300,
+    "label": "none",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531"
+  },
+  {
+    "frame": 450,
+    "label": "none",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531"
+  },
+  {
+    "frame": 600,
+    "label": "none",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531"
+  },
+  {
+    "frame": 150,
+    "label": "none",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49"
+  },
+  {
+    "frame": 300,
+    "label": "carry",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49"
+  },
+  {
+    "frame": 450,
+    "label": "goal_kick",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49"
+  },
+  {
+    "frame": 600,
+    "label": "carry",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49"
+  },
+  {
+    "frame": 150,
+    "label": "none",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67"
+  },
+  {
+    "frame": 300,
+    "label": "none",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67"
+  },
+  {
+    "frame": 450,
+    "label": "carry",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67"
+  },
+  {
+    "frame": 600,
+    "label": "goal_kick",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67"
+  },
+  {
+    "frame": 150,
+    "label": "aerial_duel",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6"
+  },
+  {
+    "frame": 300,
+    "label": "carry",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6"
+  },
+  {
+    "frame": 450,
+    "label": "goal_kick",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6"
+  },
+  {
+    "frame": 600,
+    "label": "none",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6"
+  },
+  {
+    "frame": 150,
+    "label": "corner",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f"
+  },
+  {
+    "frame": 300,
+    "label": "ground_duel",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f"
+  },
+  {
+    "frame": 450,
+    "label": "aerial_duel",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f"
+  },
+  {
+    "frame": 600,
+    "label": "carry",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f"
+  }
+]

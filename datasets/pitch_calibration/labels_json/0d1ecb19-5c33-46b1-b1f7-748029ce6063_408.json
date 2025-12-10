@@ -1,0 +1,30 @@
+{
+  "TL_Corner": [
+    0.05,
+    0.15
+  ],
+  "TR_Corner": [
+    0.95,
+    0.15
+  ],
+  "BR_Corner": [
+    0.95,
+    0.9
+  ],
+  "BL_Corner": [
+    0.05,
+    0.9
+  ],
+  "Center_Circle_Top": [
+    0.5,
+    0.4
+  ],
+  "Center_Circle_Bottom": [
+    0.5,
+    0.6
+  ],
+  "Center_Spot": [
+    0.5,
+    0.5
+  ]
+}

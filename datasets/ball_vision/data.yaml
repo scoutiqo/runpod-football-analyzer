@@ -1,0 +1,7 @@
+
+    path: /workspace/runpod-football-analyzer/datasets/ball_vision
+    train: images
+    val: images
+    names:
+      0: ball
+    

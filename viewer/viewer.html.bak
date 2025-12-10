@@ -1,0 +1,231 @@
+<!doctype html><meta charset="utf-8"><title>ScoutIQO Overlay Viewer</title>
+<style>
+  :root { color-scheme: dark; }
+  body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:16px;background:#0b1020;color:#e2e8f0}
+  .wrap{max-width:1200px;margin:0 auto}
+  .row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .card{background:#111827;border-radius:16px;padding:16px;margin:8px 0;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+  .controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .controls input[type=range]{width:300px}
+  video,canvas{max-width:100%;border-radius:12px;display:block}
+canvas{position:absolute;left:0;top:0;z-index:2;pointer-events:none}
+video{position:relative;z-index:1}
+  .mini{font-size:12px;color:#94a3b8}
+  .btn{background:#3b82f6;color:#fff;border:0;border-radius:10px;padding:8px 12px;cursor:pointer}
+  a{color:#93c5fd}
+  .stat{min-width:160px}
+</style>
+<div class="wrap">
+  <h1>ScoutIQO Overlay Viewer</h1>
+  <div class="card">
+    <div class="controls">
+      <button id="playBtn" class="btn">▶ Play/Pause</button>
+      <label>FPS <input id="fps" type="number" value="25" min="5" max="60" step="1" style="width:70px"></label>
+      <label>Frame <input id="frame" type="range" min="0" max="0" value="0"></label>
+      <span id="frameLabel" class="mini">0</span>
+      <label>Ball radius <input id="ballR" type="number" value="6" min="2" max="20" step="1" style="width:60px"></label>
+      <label>Player radius <input id="plyR" type="number" value="5" min="2" max="20" step="1" style="width:60px"></label>
+      <a href="/media/source.mp4" target="_blank">Open video</a>
+      <a href="/static/data.json" target="_blank">data.json</a>
+      <a href="/static/events.json" target="_blank">events.json</a>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <video id="vid" src="/media/source.mp4" controls crossorigin="anonymous"></video>
+      <canvas id="cv"></canvas>
+      <div class="mini">Tip: if circles drift, tweak FPS (25 or 50 are common).</div>
+    </div>
+    <div class="card">
+      <h3>Stats</h3>
+      <div class="stat"><b>Records:</b> <span id="recN">–</span></div>
+      <div class="stat"><b>Frames:</b> <span id="frmN">–</span></div>
+      <div class="stat"><b>Players:</b> <span id="plyN">–</span></div>
+      <div class="stat"><b>Ball points:</b> <span id="balN">–</span></div>
+      <div class="stat"><b>Touches:</b> <span id="touchN">–</span></div>
+      <div class="stat"><b>Passes:</b> <span id="passN">–</span></div>
+      <div class="stat"><b>Possessions:</b> <span id="possN">–</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const vid = $('#vid'), cv = $('#cv'), ctx = cv.getContext('2d');
+  const frameSlider = $('#frame'), frameLabel = $('#frameLabel');
+  const fpsInput = $('#fps'), playBtn = $('#playBtn');
+  const ballR = $('#ballR'), plyR = $('#plyR');
+
+  function normOne(o, extra={}) {
+    const t   = o.t ?? o.frame ?? o.f ?? 0;
+    const x   = o.x ?? o.cx ?? o.px ?? o.u ?? 0;
+    const y   = o.y ?? o.cy ?? o.py ?? o.v ?? 0;
+    const id  = o.id ?? o.track_id ?? o.tid ?? o.pid ?? null;
+    const cls = (o.cls ?? o.class ?? o.label) ?? extra.cls ?? undefined;
+    const team= o.team ?? o.tid ?? o.side ?? null;
+    return { t, x, y, id, cls, team };
+  }
+
+  function normalizeTracks(tracks){
+    // SPECIAL CASE: {meta, fps, players:[...], ball:[...], events:{...}}
+    if (tracks && typeof tracks === 'object' &&
+        (Array.isArray(tracks.players) || Array.isArray(tracks.ball))) {
+      const players = (tracks.players||[]).map(r => normOne(r, {cls:'player'}));
+      const ball    = (tracks.ball||[]).map(r => normOne(r, {cls:'ball'}));
+      return { arr: players.concat(ball), defaultFps: (typeof tracks.fps==='number'?tracks.fps:null), inlineEvents: tracks.events||null };
+    }
+
+    // GENERIC SHAPES
+    let arr=[];
+    if (Array.isArray(tracks)) {
+      arr = tracks.map(r=>normOne(r));
+    } else if (tracks && typeof tracks === 'object') {
+      if (Array.isArray(tracks.records)) arr = tracks.records.map(r=>normOne(r));
+      else if (Array.isArray(tracks.data)) arr = tracks.data.map(r=>normOne(r));
+      else if (tracks.data && Array.isArray(tracks.data.records)) arr = tracks.data.records.map(r=>normOne(r));
+      else if (Array.isArray(tracks.points)) arr = tracks.points.map(r=>normOne(r));
+      else if (Array.isArray(tracks.detections)) arr = tracks.detections.map(r=>normOne(r));
+      else if (Array.isArray(tracks.rows)) arr = tracks.rows.map(r=>normOne(r));
+      else if (Array.isArray(tracks.items)) arr = tracks.items.map(r=>normOne(r));
+      else if (Array.isArray(tracks.frames)) {
+        for (const fr of tracks.frames){
+          const t = fr.t ?? fr.frame ?? fr.ts ?? fr.index ?? 0;
+          const list = fr.objs || fr.objects || fr.items || fr.dets || fr.records || [];
+          for (const o of list){ arr.push(normOne(Object.assign({}, o, {t}))); }
+        }
+      }
+    }
+    return { arr, defaultFps:null, inlineEvents:null };
+  }
+
+  async function loadJSON(u){ const r=await fetch(u); if(!r.ok) throw new Error(r.status); return r.json(); }
+
+  Promise.all([loadJSON('/static/data.json?v='+Date.now()), loadJSON('/static/events.json?v='+Date.now()).catch(()=>({}))]).then(([tracksRaw, eventsRaw])=>{
+    const {arr, defaultFps, inlineEvents} = normalizeTracks(tracksRaw);
+
+    // Prefer inline events if present in data.json
+    const events = (inlineEvents && typeof inlineEvents==='object') ? inlineEvents : (eventsRaw || {});
+
+    // Apply default FPS if provided
+    if (typeof defaultFps === 'number' && defaultFps > 0) {
+      fpsInput.value = String(defaultFps);
+    }
+
+    // Stats
+    $('#recN').textContent = arr.length.toLocaleString();
+    const frames = new Set(arr.map(r=>r.t|0));
+    $('#frmN').textContent = frames.size.toLocaleString();
+    let players=0, balls=0;
+    for (const r of arr){ if (r.cls==='ball') { balls++; } else { players++; } }
+    $('#plyN').textContent = players.toLocaleString();
+    $('#balN').textContent = balls.toLocaleString();
+    $('#touchN').textContent = (events.touches||[]).length.toLocaleString();
+    $('#passN').textContent  = (events.passes||[]).length.toLocaleString();
+    $('#possN').textContent  = (events.possessions||[]).length.toLocaleString();
+
+    // Index by frame
+    const byT = new Map();
+    for (const r of arr){
+      const t = r.t|0;
+      if (!byT.has(t)) byT.set(t, []);
+      byT.get(t).push(r);
+    }
+    const maxT = Math.max(0, ...byT.keys());
+// Guess scale with the first non-empty frame list
+for(const k of byT.keys()){ const L=byT.get(k); if(L&&L.length){ guessScale(L); break; } }
+    frameSlider.max = String(maxT);
+    frameSlider.value = "0";
+    frameLabel.textContent = "0";
+
+    // Canvas sizing and draw
+    function setCanvasSize(){ cv.width = vid.videoWidth||1280; cv.height = vid.videoHeight||720; }
+    vid.addEventListener('loadedmetadata', setCanvasSize);
+
+    let SCALE_X=1, SCALE_Y=1, OFF_X=0, OFF_Y=0;
+function guessScale(list){
+  if(!list||!list.length) return;
+  let mx=0,my=0; for(const r of list){ if(r.x>mx) mx=r.x; if(r.y>my) my=r.y; }
+  // If coords look normalized (<=1.2), scale up to video pixels
+  if(mx>0 && mx<=1.2 && my>0 && my<=1.2){ SCALE_X = cv.width; SCALE_Y = cv.height; return; }
+  // If coords are in a smaller inference size (e.g., 640x360), scale to video
+  // Heuristic: if max between 10 and 2000, stretch to canvas keeping aspect
+  if(mx>10 && mx<4000 && my>10 && my<4000){ SCALE_X = cv.width / mx; SCALE_Y = cv.height / my; return; }
+}
+function drawFrame(t){
+      frameLabel.textContent = t;
+      ctx.clearRect(0,0,cv.width,cv.height);
+      const list = byT.get(t) || [];
+      for (const r of list){
+        const isBall = r.cls==='ball';
+        ctx.beginPath();
+        ctx.arc(r.x*SCALE_X+OFF_X, r.y*SCALE_Y+OFF_Y, isBall ? Number(ballR.value) : Number(plyR.value), 0, Math.PI*2);
+        ctx.lineWidth = isBall ? 2.5 : 1.8;
+        const tid = (r.team!=null ? r.team : r.tid);
+        ctx.strokeStyle = isBall ? 'rgba(255,255,255,0.95)' :
+          (tid===0 ? 'rgba(239,68,68,0.95)' : tid===1 ? 'rgba(59,130,246,0.95)' : 'rgba(59,130,246,0.9)');
+        ctx.stroke();
+        if (r.id!=null){
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.font = '10px system-ui, sans-serif';
+          ctx.fillText(String(r.id), r.x*SCALE_X+OFF_X+6, r.y*SCALE_Y+OFF_Y-6);
+        }
+      }
+    }
+
+    // Slider → frame & time
+    frameSlider.addEventListener('input', e => {
+      const t = Number(e.target.value)|0;
+      drawFrame(t);
+      const fps = Math.max(5, Math.min(60, Number(fpsInput.value)||25));
+      const sec = t / fps;
+      if (!vid.paused) vid.pause();
+      if (!Number.isNaN(sec)) vid.currentTime = sec;
+    });
+
+    // Play loop
+    let rafId=null, lastTs=0, acc=0;
+    function loop(ts){
+      const fps = Math.max(5, Math.min(60, Number(fpsInput.value)||25));
+      if (!lastTs) lastTs = ts;
+      acc += (ts - lastTs) / 1000;
+      lastTs = ts;
+      const step = 1 / fps;
+      while (acc >= step) {
+        const t = Math.min(Number(frameSlider.max), (Number(frameSlider.value)|0) + 1);
+        frameSlider.value = String(t);
+        drawFrame(t);
+        acc -= step;
+      }
+      if (!vid.paused) rafId = requestAnimationFrame(loop);
+    }
+    playBtn.addEventListener('click', () => {
+      if (vid.paused) {
+        vid.play().catch(()=>{});
+        vid.muted = true;
+        lastTs=0; acc=0;
+        vid.addEventListener('pause', ()=>{ if (rafId) cancelAnimationFrame(rafId); }, {once:true});
+        rafId = requestAnimationFrame(loop);
+      } else {
+        vid.pause(); if (rafId) cancelAnimationFrame(rafId);
+      }
+    });
+
+    // Keep canvas aligned over video
+    const syncLayout = () => {
+      const r = vid.getBoundingClientRect();
+      cv.style.position = 'absolute';
+      vid.parentElement.style.position = 'relative';
+      cv.style.left = 0; cv.style.top = 0; cv.style.width = r.width+'px'; cv.style.height = r.height+'px';
+    };
+    window.addEventListener('resize', syncLayout);
+vid.addEventListener('timeupdate', syncLayout);
+vid.addEventListener('loadeddata', ()=>{ setCanvasSize(); drawFrame(0); syncLayout(); }, {once:true});
+  }).catch(e=>{
+    console.error('Failed to load data/events', e);
+    document.querySelector('.wrap').insertAdjacentHTML('beforeend',
+      `<div class="card">Error loading JSON: ${String(e)}</div>`);
+  });
+})();
+</script>

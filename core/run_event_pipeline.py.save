@@ -1,0 +1,79 @@
+#!/usr/bin/env python
+import argparse
+import sys
+import os
+from pathlib import Path
+
+# Add project root to path
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT))
+
+def run_step(script_cmd, description):
+    print(f"\n🚀 STEP: {description}")
+    print(f"   Exec: python {script_cmd}")
+    ret = os.system(f"python {script_cmd}")
+    if ret != 0:
+        print(f"❌ FAILED: {description}")
+        sys.exit(ret)
+    print(f"✅ DONE: {description}")
+
+def main():
+    # 1. Initialize Parser FIRST
+    parser = argparse.ArgumentParser(description="ScoutIQO Event Pipeline")
+
+    # 2. Add Arguments
+    parser.add_argument("--tracks", help="Path to main tracks file", default="runs/json/formatted_tracks_silver.json")
+    parser.add_argument("--match_id", required=True, help="Supabase Match ID for linking events")
+    parser.add_argument("--pitch_mask", help="Polygon coords: x1,y1,x2,y2... (Normalized 0-1)", default=None)
+    
+    args = parser.parse_args()
+
+    print("⚽ STARTING SCOUTIQO EVENT PIPELINE")
+    
+    # Step 1: Mine Weak Labels
+    run_step("core/events_from_tracks_pipeline.py", "Mine Weak Labels (Silver Dataset)")
+
+    # Step 1.5: CLEANING (Manual Mask vs AI Auto)
+    if args.pitch_mask:
+        # A) The "Human Truth" path (Best Quality)
+        run_step(f"core/clean_tracks_manual.py --mask \"{args.pitch_mask}\"", "Manual Pitch Masking")
+        
+        # Run basic smoothing (Anti-Flicker)
+        run_step("core/clean_tracks.py", "Anti-Flicker Smoothing")
+
+        # NEW: Calculate Speed & Distance
+        run_step(f"core/speed_and_distance.py --mask \"{args.pitch_mask}\"", "Calculate Physical Metrics")
+        
+        # NEW: Generate Heatmaps
+        run_step("core/tactical_metrics.py", "Generate Heatmaps & Possession")
+
+    else:
+        # B) The "AI Auto" path (Fallback)
+        run_step("core/clean_tracks_pose.py", "AI Geometry Filter")
+
+    # Step 2: Build Features
+    run_step("training/build_event_dataset.py", "Build Physics Feature Dataset")
+
+    # Step 3: Train (Using LSTM now)
+    run_step("training/train_event_lstm.py", "Train/Retrain LSTM Model")
+
+
+    # Step 5: Export Events
+    run_step("core/export_events_for_viewer.py", "Export Clean Events")
+
+    # Step 5.5: Export Tracks (Finalizing)
+    run_step("core/finalize_export.py", "Finalize Tracks for Frontend")
+
+    # Step 6: Upload
+    if os.getenv("SUPABASE_URL"):
+        run_step(f"core/push_to_supabase.py --match_id {args.match_id}", "Upload Events to Supabase")
+    else:
+        print("\n⚠️ Skipping Cloud Upload (No SUPABASE_URL env var)")
+
+    print("\n🏆 PIPELINE COMPLETE.")
+    
+    # Deploy locally
+    os.system("cp runs/json/final_events_viewer.json viewer/static/events.json")
+
+if __name__ == "__main__":
+    main()

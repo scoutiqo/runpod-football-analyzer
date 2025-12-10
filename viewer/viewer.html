@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ScoutIQO Overlay Viewer (Tracks + Learned Events)</title>
+  <style>
+    body {
+      background: #050816;
+      color: #e5e7eb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+    #top {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    #video-wrap {
+      position: relative;
+      display: inline-block;
+      max-width: 960px;
+    }
+    video {
+      max-width: 960px;
+      width: 100%;
+      height: auto;
+      display: block;
+      background: #000;
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    #info {
+      min-width: 260px;
+      padding: 12px;
+      background: #0b1120;
+      border-radius: 10px;
+      font-size: 14px;
+      border: 1px solid #1f2937;
+    }
+    #info strong {
+      font-weight: 600;
+    }
+    .label-pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      margin: 2px 4px 2px 0;
+    }
+    .label-pass { background: #14532d; color: #bbf7d0; }
+    .label-duel { background: #1d4ed8; color: #bfdbfe; }
+    .label-ball_loss { background: #7f1d1d; color: #fecaca; }
+    .label-unknown { background: #44403c; color: #e7e5e4; }
+    #debug {
+      font-family: monospace;
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 8px;
+      white-space: pre-wrap;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    #kpis {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <h2>ScoutIQO — Tracks + Learned Events Overlay Viewer</h2>
+
+  <div id="top">
+    <div id="video-wrap">
+      <video id="video" src="test_short.mp4" controls></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div id="info">
+      <div><strong>Frame:</strong> <span id="frame">0</span></div>
+      <div><strong>Time:</strong> <span id="time">0.00s</span></div>
+      <div><strong>Events at this frame:</strong></div>
+      <div id="events_here" style="margin-top:4px;"></div>
+      <div id="kpis"></div>
+      <div id="debug"></div>
+    </div>
+  </div>
+
+  <script>
+    // If timing looks slightly off, tweak this FPS value.
+    const FPS = 25;
+
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+
+    const frameSpan = document.getElementById('frame');
+    const timeSpan = document.getElementById('time');
+    const eventsDiv = document.getElementById('events_here');
+    const debugDiv = document.getElementById('debug');
+    const kpisDiv = document.getElementById('kpis');
+
+    let eventsByFrame = {};
+    let tracksByFrame = {};
+    let videoWidth = 0;
+    let videoHeight = 0;
+
+    function logDebug(msg) {
+      console.log(msg);
+      debugDiv.textContent += msg + "\n";
+    }
+
+    function labelClass(label) {
+      if (label === 'pass') return 'label-pass';
+      if (label === 'duel') return 'label-duel';
+      if (label === 'ball_loss') return 'label-ball_loss';
+      return 'label-unknown';
+    }
+
+    function formatProb(p) {
+      if (typeof p !== 'number') return '';
+      return (p * 100).toFixed(1) + '%';
+    }
+
+    // --- Load events.json (learned model output) ---
+    async function loadEvents() {
+      try {
+        const resp = await fetch('events.json');
+        const data = await resp.json();
+
+        if (!Array.isArray(data)) {
+          logDebug('events.json is not an array; using best-effort parsing');
+        }
+
+        (data || []).forEach((ev, idx) => {
+          const frame =
+            (typeof ev.frame === 'number') ? ev.frame :
+            (typeof ev.frame_index === 'number') ? ev.frame_index :
+            idx;
+
+          if (!eventsByFrame[frame]) eventsByFrame[frame] = [];
+          eventsByFrame[frame].push(ev);
+        });
+
+        logDebug('Loaded events.json for ' +
+          Object.keys(eventsByFrame).length + ' frames.');
+      } catch (err) {
+        logDebug('Failed to load events.json: ' + err);
+      }
+    }
+
+    // --- Helpers to extract a bounding box from variable JSON shapes ---
+    function extractBox(obj) {
+      if (!obj || typeof obj !== 'object') return null;
+
+      // bbox: [x, y, w, h]
+      if (Array.isArray(obj.bbox) && obj.bbox.length >= 4) {
+        const [x, y, w, h] = obj.bbox;
+        return { x, y, w, h };
+      }
+
+      // x1, y1, x2, y2
+      if ('x1' in obj && 'y1' in obj && 'x2' in obj && 'y2' in obj) {
+        const w = obj.x2 - obj.x1;
+        const h = obj.y2 - obj.y1;
+        return { x: obj.x1, y: obj.y1, w, h };
+      }
+
+      // cx, cy, w, h
+      if ('cx' in obj && 'cy' in obj && 'w' in obj && 'h' in obj) {
+        const x = obj.cx - obj.w / 2;
+        const y = obj.cy - obj.h / 2;
+        return { x, y, w: obj.w, h: obj.h };
+      }
+
+      // x, y, w, h directly
+      if ('x' in obj && 'y' in obj && 'w' in obj && 'h' in obj) {
+        return { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
+      }
+
+      return null;
+    }
+
+    function isBall(obj) {
+      if (!obj || typeof obj !== 'object') return false;
+      if (obj.is_ball === true) return true;
+      const lbl = (obj.label || obj.cls || obj.class_name || '').toString().toLowerCase();
+      return lbl.includes('ball');
+    }
+
+    function teamId(obj) {
+      if (!obj || typeof obj !== 'object') return null;
+      if (obj.team != null) return obj.team;
+      if (obj.team_id != null) return obj.team_id;
+      if (obj.side != null) return obj.side;
+      return null;
+    }
+
+    // --- Load tracks.json (players + ball tracks) ---
+    async function loadTracks() {
+      try {
+        const resp = await fetch('tracks.json');
+        const data = await resp.json();
+
+        if (!data) {
+          logDebug('tracks.json empty or null');
+          return;
+        }
+
+        // Try a few shapes: {frames: [...]}, or array of frames
+        let framesArr = [];
+
+        if (Array.isArray(data)) {
+          framesArr = data;
+        } else if (Array.isArray(data.frames)) {
+          framesArr = data.frames;
+        } else {
+          logDebug('tracks.json has unexpected top-level shape; trying to iterate values');
+          framesArr = Object.values(data);
+        }
+
+        framesArr.forEach((frameEntry, idx) => {
+          if (!frameEntry) return;
+
+          const frameIdx =
+            (typeof frameEntry.frame === 'number') ? frameEntry.frame :
+            (typeof frameEntry.frame_index === 'number') ? frameEntry.frame_index :
+            (typeof frameEntry.f === 'number') ? frameEntry.f :
+            idx;
+
+          const players = frameEntry.players || frameEntry.tracks || [];
+          const ball = frameEntry.ball ? [frameEntry.ball] : [];
+
+          const allObjs = [...players, ...ball];
+
+          allObjs.forEach(obj => {
+            const box = extractBox(obj);
+            if (!box) return;
+
+            const isBallObj = isBall(obj);
+            const tid = teamId(obj);
+
+            if (!tracksByFrame[frameIdx]) tracksByFrame[frameIdx] = [];
+            tracksByFrame[frameIdx].push({
+              x: box.x,
+              y: box.y,
+              w: box.w,
+              h: box.h,
+              isBall: isBallObj,
+              team: tid
+            });
+          });
+        });
+
+        logDebug('Loaded tracks.json with ' +
+          Object.keys(tracksByFrame).length + ' frames containing tracks.');
+      } catch (err) {
+        logDebug('Failed to load tracks.json: ' + err);
+      }
+    }
+
+    function resizeCanvasToVideo() {
+      const rect = video.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+
+      canvas.width = width;
+      canvas.height = height;
+
+      videoWidth = width;
+      videoHeight = height;
+    }
+
+    function drawOverlayForFrame(frame) {
+      if (!videoWidth || !videoHeight) {
+        resizeCanvasToVideo();
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const tracks = tracksByFrame[frame] || [];
+      if (!tracks.length) return;
+
+      tracks.forEach(obj => {
+        const x = obj.x;
+        const y = obj.y;
+        const w = obj.w;
+        const h = obj.h;
+
+        // Assume coordinates are in original video pixel space; scale to canvas.
+        // If the original resolution was 1280x720, this keeps aspect when resized.
+        const origW = 1280; // adjust if your tracking was done at a different width
+        const origH = 720;
+
+        const sx = x / origW * canvas.width;
+        const sy = y / origH * canvas.height;
+        const sw = w / origW * canvas.width;
+        const sh = h / origH * canvas.height;
+
+        if (obj.isBall) {
+          ctx.strokeStyle = '#f97316';
+          ctx.lineWidth = 3;
+        } else {
+          const t = obj.team;
+          if (t === 0 || t === '0' || t === 'A') {
+            ctx.strokeStyle = '#22c55e';
+          } else if (t === 1 || t === '1' || t === 'B') {
+            ctx.strokeStyle = '#3b82f6';
+          } else {
+            ctx.strokeStyle = '#e5e7eb';
+          }
+          ctx.lineWidth = 2;
+        }
+
+        ctx.strokeRect(sx, sy, sw, sh);
+      });
+    }
+
+    function renderFrameInfo() {
+      const currentTime = video.currentTime || 0;
+      const frame = Math.round(currentTime * FPS);
+
+      frameSpan.textContent = frame;
+      timeSpan.textContent = currentTime.toFixed(2) + 's';
+
+      // Events
+      const evs = eventsByFrame[frame] || [];
+      eventsDiv.innerHTML = '';
+
+      if (!evs.length) {
+        eventsDiv.textContent = '(no event at this frame)';
+      } else {
+        evs.forEach(ev => {
+          const label = ev.label || ev.canonical_label || 'unknown';
+          const prob = ev.prob ?? ev.probability ?? ev.score;
+
+          const pill = document.createElement('span');
+          pill.className = 'label-pill ' + labelClass(label);
+          pill.textContent = label + (prob != null ? ' (' + formatProb(prob) + ')' : '');
+          eventsDiv.appendChild(pill);
+        });
+      }
+
+      drawOverlayForFrame(frame);
+    }
+
+    video.addEventListener('timeupdate', renderFrameInfo);
+    video.addEventListener('seeked', renderFrameInfo);
+    video.addEventListener('loadedmetadata', () => {
+      resizeCanvasToVideo();
+      renderFrameInfo();
+      kpisDiv.textContent = 'FPS used for frame mapping: ' + FPS +
+        '. If overlays drift, adjust FPS in script.';
+    });
+    window.addEventListener('resize', resizeCanvasToVideo);
+
+    (async function init() {
+      logDebug('Initializing viewer...');
+      await loadEvents();
+      await loadTracks();
+      logDebug('Init done. Scrub the video to see overlays & events.');
+    })();
+  </script>
+</body>
+</html>

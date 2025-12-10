@@ -1,0 +1,146 @@
+[
+  {
+    "job_id": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "color_name": "unknown",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "color_name": "unknown",
+    "role": "unknown",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "color_name": "black",
+    "role": "ref",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "color_name": "unknown",
+    "role": "unknown",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "color_name": "blue",
+    "role": "player",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "color_name": "red",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "color_name": "white",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "color_name": "red",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "color_name": "dark_blue",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "color_name": "red",
+    "role": "player",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "color_name": "unknown",
+    "role": "unknown",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "color_name": "white",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "color_name": "unknown",
+    "role": "player",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "color_name": "unknown",
+    "role": "unknown",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "color_name": "unknown",
+    "role": "unknown",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "color_name": "unknown",
+    "role": "unknown",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "color_name": "blue",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "color_name": "blue",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "color_name": "unknown",
+    "role": "unknown",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "color_name": "unknown",
+    "role": "unknown",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "color_name": "white_red",
+    "role": "player",
+    "team_id_assigned": "B"
+  },
+  {
+    "job_id": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "color_name": "white",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "color_name": "black",
+    "role": "player",
+    "team_id_assigned": "A"
+  },
+  {
+    "job_id": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "color_name": "yellow",
+    "role": "keeper",
+    "team_id_assigned": "A"
+  }
+]

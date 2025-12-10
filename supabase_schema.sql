@@ -1,0 +1,3 @@
+create table if not exists run_metrics (id bigint generated always as identity primary key, run_id text not null, ts timestamptz not null default now(), metrics jsonb not null);
+create table if not exists next_run_configs (id bigint generated always as identity primary key, created_at timestamptz not null default now(), params jsonb not null);
+create or replace view v_latest_params as select distinct on (1) 1 as singleton, params from next_run_configs order by 1, created_at desc;

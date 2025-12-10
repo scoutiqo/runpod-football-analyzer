@@ -1,0 +1,114 @@
+import os, time, json, subprocess, shlex, tempfile, traceback
+from pathlib import Path
+from datetime import datetime
+
+from supabase import create_client, Client
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+JOBS_TABLE   = os.getenv("JOBS_TABLE","jobs")
+ARTIFACT_DIR = Path(os.getenv("ARTIFACT_DIR","./runs/artifacts"))
+
+def sb_client() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def _safe_update(sb: Client, job_id, fields: dict):
+    try:
+        sb.table(JOBS_TABLE).update(fields).eq("id", job_id).execute()
+    except Exception:
+        # Fallback to minimal update
+        minimal = {k:v for k,v in fields.items() if k in ("status","pct","error")}
+        if minimal:
+            sb.table(JOBS_TABLE).update(minimal).eq("id", job_id).execute()
+
+def _download(video_url: str, out_path: Path) -> None:
+    """
+    Robust download via yt-dlp (Facebook, YouTube, etc.), remux to mp4.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # prefer mp4 container
+    cmd = [
+        "yt-dlp",
+        "-f", "bv*+ba/b",
+        "-S", "res,codec:avc:m4a",
+        "--merge-output-format", "mp4",
+        "-o", str(out_path.with_suffix(".%(ext)s")),
+        video_url
+    ]
+    subprocess.check_call(cmd)
+    # normalize final file path to .mp4
+    if not out_path.exists():
+        # find the produced file with same stem
+        produced = list(out_path.parent.glob(out_path.stem + ".*"))
+        if not produced:
+            raise RuntimeError("Download finished but no file produced.")
+        produced[0].rename(out_path)
+
+def _run_analyzer(video_path: Path, out_json: Path) -> None:
+    """
+    Calls your analyzer. Configure via ANALYZER_CMD env if needed.
+    """
+    tpl = os.getenv("ANALYZER_CMD",'python3 run_soccer.py --input "{VIDEO}" --export_json --out_json "{OUT_JSON}"')
+    cmd = shlex.split(tpl.format(VIDEO=str(video_path), OUT_JSON=str(out_json)))
+    out_json.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.check_call(cmd)
+
+def main():
+    print("🟢 Worker started. Watching for queued jobs...", flush=True)
+    sb = sb_client()
+    while True:
+        try:
+            # fetch oldest queued job
+            res = sb.table(JOBS_TABLE)\
+                .select("*")\
+                .eq("status","queued")\
+                .order("created_at", desc=False)\
+                .limit(1)\
+                .execute()
+            jobs = getattr(res, "data", None) or (res[1] if isinstance(res, tuple) else [])
+            if not jobs:
+                time.sleep(2)
+                continue
+
+            job = jobs[0]
+            job_id   = job["id"]
+            video_url= job["video_url"]
+
+            _safe_update(sb, job_id, {"status":"running","pct":1})
+
+            # Paths
+            job_dir = ARTIFACT_DIR / str(job_id)
+            job_dir.mkdir(parents=True, exist_ok=True)
+            video_path = job_dir / "source.mp4"
+            out_json   = job_dir / "tracks.json"
+
+            # 1) download
+            _safe_update(sb, job_id, {"pct":10})
+            _download(video_url, video_path)
+
+            # 2) analyze
+            _safe_update(sb, job_id, {"pct":60})
+            _run_analyzer(video_path, out_json)
+
+            # 3) finalize
+            _safe_update(sb, job_id, {
+                "status":"done",
+                "pct":100,
+                "artifact_json": str(out_json),
+                "artifact_video": str(video_path)
+            })
+
+        except Exception as err:
+            try:
+                _safe_update(sb, job_id, {
+                    "status":"error",
+                    "pct":0,
+                    "error": f"{type(err).__name__}: {err}"
+                })
+            except Exception:
+                pass
+            print("❌ Error:\n" + traceback.format_exc(), flush=True)
+            time.sleep(2)
+
+if __name__ == "__main__":
+    main()

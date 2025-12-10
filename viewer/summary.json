@@ -1,0 +1,18 @@
+{
+  "frames": 55638,
+  "possession_share_percent": {
+    "0": 41.06,
+    "1": 58.94
+  },
+  "avg_reward": 0.0592,
+  "p95_reward": 1.2,
+  "avg_ball_speed_px_per_frame": 8.555,
+  "touches_total": 4631,
+  "touches_by_team": {
+    "1": 2561,
+    "0": 2070
+  },
+  "passes_total": 4630,
+  "passes_by_team": {},
+  "possessions_total": 1133
+}

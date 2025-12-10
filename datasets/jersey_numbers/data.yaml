@@ -1,0 +1,5 @@
+path: /workspace/runpod-football-analyzer/datasets/jersey_numbers
+train: images
+val: images
+names:
+  0: number

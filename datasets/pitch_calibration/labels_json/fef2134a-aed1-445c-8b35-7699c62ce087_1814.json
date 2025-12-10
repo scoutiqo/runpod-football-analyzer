@@ -1,0 +1,14 @@
+{
+  "Box_TR_Right": [
+    0.95,
+    0.45
+  ],
+  "Box_BR_Right": [
+    0.92,
+    0.75
+  ],
+  "Penalty_Spot_Right": [
+    0.85,
+    0.6
+  ]
+}

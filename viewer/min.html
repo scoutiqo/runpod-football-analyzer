@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>ScoutIQO Minimal Viewer</title>
+<body style="margin:10px;background:#0b1020;color:#e2e8f0;font-family:system-ui,sans-serif">
+  <div style="display:flex;gap:8px;align-items:center;">
+    <button id="playBtn">Play</button>
+    <label>Frame <input id="frameBox" type="number" min="1" value="1" style="width:90px"></label>
+    <label><input id="chkPlayers" type="checkbox" checked> Players</label>
+    <label><input id="chkBall" type="checkbox" checked> Ball</label>
+    <span id="hud" style="color:#9ca3af;margin-left:8px;"></span>
+  </div>
+
+  <video id="vid" src="/media/source.mp4" muted style="display:none"></video>
+  <canvas id="cv" width="1280" height="720" style="display:block;margin-top:8px;border:1px solid #1f2937"></canvas>
+
+  <script src="/static/min.js"></script>
+</body>

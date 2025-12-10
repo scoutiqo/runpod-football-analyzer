@@ -1,0 +1,40 @@
+<!doctype html><meta charset="utf-8"><title>ScoutIQO Viewer</title>
+<style>
+  body{font-family:system-ui, sans-serif; margin:16px; background:#0b1020; color:#e2e8f0}
+  .wrap{max-width:1400px;margin:0 auto}
+  .card{background:#111827;border-radius:16px;padding:12px;margin:12px 0}
+  .mini{font-size:12px;color:#9ca3af}
+  button{background:#3b82f6;border:0;border-radius:10px;color:#fff;padding:8px 12px;cursor:pointer;margin-right:8px}
+  canvas{display:block; width:100%; height:auto; image-rendering:pixelated; border-radius:12px}
+  input[type=number]{width:120px}
+</style>
+<div class="wrap">
+  <div class="card">
+    <button id="play">Play</button>
+    <button id="prev">◀</button>
+    <button id="next">▶</button>
+    <label class="mini">Jump <input id="jump" type="number" value="0" min="0"></label>
+    <label><input type="checkbox" id="showPlayers" checked> Players</label>
+    <label><input type="checkbox" id="showBall" checked> Ball</label>
+    <label><input type="checkbox" id="showEvents" checked> Events</label>
+    <span id="time" class="mini" style="margin-left:10px"></span>
+  </div>
+
+  <!-- Hidden video source; drawn onto canvas each frame -->
+  <video id="srcVideo" src="media/source.mp4" preload="auto" playsinline muted style="display:none"></video>
+
+  <!-- Drawing surface -->
+  <canvas width="1280" height="720"></canvas>
+</div>
+
+<!-- First, load the data bundle -->
+<script>
+  window.__DATA__ = null;
+  fetch("static/data.json", {cache:"no-store"})
+    .then(r => r.json())
+    .then(d => { window.__DATA__ = d; console.log("data loaded", d?.meta); })
+    .catch(e => console.error("failed to load data.json", e));
+</script>
+
+<!-- Then load the app logic -->
+<script src="static/app.js"></script>

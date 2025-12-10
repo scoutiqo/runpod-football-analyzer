@@ -1,0 +1,498 @@
+[
+  {
+    "frame": 0,
+    "label": "duel",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 1,
+    "label": "duel",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 2,
+    "label": "duel",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 3,
+    "label": "duel",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 0,
+    "label": "duel",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 1,
+    "label": "duel",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 2,
+    "label": "duel",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 4,
+    "label": "duel",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "duel",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "duel",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "pass",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "duel",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "duel",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "duel",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "duel",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "shot",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "cross",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "pass",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "duel",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "shot",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "duel",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "cross",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "cross",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "cross",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "shot",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "pass",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "duel",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "duel",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "duel",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "cross",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "shot",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "duel",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "cross",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "shot",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "pass",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "duel",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "shot",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "pass",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "cross",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "pass",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "duel",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "cross",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "shot",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "cross",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "shot",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "none",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "none",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "none",
+    "video": "5a971584-ee6d-4394-9a07-6ce8d13db531",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "none",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "none",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "carry",
+    "video": "6005de61-39b8-493a-b1a8-b197d1a70e49",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "none",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "shot",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "aerial_duel",
+    "video": "7b0d5ead-ba12-4cf4-9c09-d674574a2e67",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "carry",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "none",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "free_kick",
+    "video": "8e00a3a0-0694-4c86-9cbf-aa721fdda6f6",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "none",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "cross",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "corner",
+    "video": "923b7349-2a0f-408f-81f5-f6e68e575073",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "cross",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "block",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "none",
+    "video": "93d6efeb-3432-4294-b643-bdd98472f34f",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "aerial_duel",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "none",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "carry",
+    "video": "c472ff68-ba03-4abd-9c4e-1a57bfd38bc8",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "none",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "cross",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "control",
+    "video": "d1ed0d19-0222-4064-83e3-a5a3c3dfbb9a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "none",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "corner",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "shot",
+    "video": "d536b470-cdc5-4324-88b8-15f3ed08d51d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "carry",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "pressure",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "shot",
+    "video": "dbe87b9f-9fdb-42cd-a8e3-86bd3cda660d",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "none",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "corner",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "pass",
+    "video": "fef2134a-aed1-445c-8b35-7699c62ce087",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "none",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "corner",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "shot",
+    "video": "aceb95c0-f8ed-4674-a835-e27b2f474a7a",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 100,
+    "label": "shot",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 500,
+    "label": "block",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "vlm_oracle"
+  },
+  {
+    "frame": 900,
+    "label": "goal_kick",
+    "video": "0c23d0e0-f200-4fba-b5fd-e02f42570562",
+    "source": "vlm_oracle"
+  }
+]

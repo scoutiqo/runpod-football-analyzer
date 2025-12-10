@@ -1,0 +1,4 @@
+path: training/datasets/football_v2
+train: images/train
+val: images/val
+names: [player, ball]

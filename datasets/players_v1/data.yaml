@@ -1,0 +1,9 @@
+path: players_v1
+train: images
+val: images
+names:
+  0: ball
+  1: coach_staff
+  2: goalkeeper
+  3: player
+  4: referee

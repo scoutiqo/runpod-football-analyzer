@@ -1,0 +1,52 @@
+[
+  {
+    "clip": "test_short",
+    "t": 42,
+    "event": "pass"
+  },
+  {
+    "clip": "test_short",
+    "t": 0,
+    "event": "pass"
+  },
+  {
+    "clip": "test_short",
+    "t": 0,
+    "event": "pass"
+  },
+  {
+    "clip": "test_short",
+    "t": 0,
+    "event": "pass"
+  },
+  {
+    "clip": "test_short",
+    "t": 0,
+    "event": "pass"
+  },
+  {
+    "clip": "test_short",
+    "t": 0,
+    "event": "pass"
+  },
+  {
+    "clip": "test_short",
+    "t": 0,
+    "event": "pass"
+  },
+  {
+    "clip": "test_short",
+    "t": 0,
+    "event": "pass"
+  },
+  {
+    "clip": "test_short",
+    "t": 0,
+    "event": "pass"
+  },
+  {
+    "clip": "test_short",
+    "t": 0,
+    "event": "pass"
+  }
+]
